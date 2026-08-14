@@ -414,7 +414,8 @@ function Convert-MdToWord {
                 continue
             }
             if ($trimmed -match '^[-*]\s+(.*)') {
-                Add-WordPara -Word $word -Doc $doc -Text $Matches[1] -Style -19   # List Bullet
+                $r = Add-WordPara -Word $word -Doc $doc -Text $Matches[1] -Style -19   # List Bullet
+                $r.ListFormat.ApplyBulletDefault()   # 应用真实项目符号，Word 里可见圆点
                 continue
             }
             # 普通段落 + 加粗/斜体（Add-WordPara 解析 ** 与 * 标记）
@@ -472,7 +473,12 @@ function Convert-WordToPageMd {
             } else {
                 $text = Get-MarkedText -Range $p.Range
                 if (-not $text) { continue }
-                if ($name -eq $styleBullet) { $lines.Add("- $text") } else { $lines.Add($text) }
+                # 列表判断：有真实项目符号（ListType>0，用户 Word 里加/去圆点都能识别），
+                # 或仍是 List Bullet 样式（旧文档兜底）
+                $isList = $false
+                try { $isList = ($p.Range.ListFormat.ListType -gt 0) } catch { }
+                if (-not $isList -and $name -eq $styleBullet) { $isList = $true }
+                if ($isList) { $lines.Add("- $text") } else { $lines.Add($text) }
             }
         }
         $doc.Close($false)
