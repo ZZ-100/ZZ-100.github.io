@@ -20,7 +20,7 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 # ---------- 构建表单 ----------
 $form = New-Object System.Windows.Forms.Form
 $form.Text = '学术主页管理工具'
-$form.Size = New-Object System.Drawing.Size(850, 600)
+$form.Size = New-Object System.Drawing.Size(850, 660)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 
@@ -107,9 +107,21 @@ function Start-HexoServer {
     }
 }
 
-# --- 底部工具按钮 ---
+# 在 Word 中打开文章进行编辑
+function Open-PostInWord {
+    param([string]$MdPath, [string]$Root)
+    $editDir = Join-Path $Root '.word_edits'
+    if (-not (Test-Path -LiteralPath $editDir)) { New-Item -ItemType Directory -Path $editDir | Out-Null }
+    $slug = [System.IO.Path]::GetFileNameWithoutExtension($MdPath)
+    $docx = Join-Path $editDir ($slug + '.docx')
+    Convert-MdToWord -MdPath $MdPath -DocxPath $docx
+    Start-Process $docx
+    $status.Text = "已在 Word 打开 [$slug]，编辑保存后点『从 Word 导入』选择同一文件可更新文章"
+}
+
+# --- 底部工具按钮（第一行） ---
 $btnEdit = New-Object System.Windows.Forms.Button
-$btnEdit.Text = '编辑选中'
+$btnEdit.Text = 'Word 编辑'
 $btnEdit.Location = New-Object System.Drawing.Point(12, 445)
 $btnEdit.Size = New-Object System.Drawing.Size(90, 27)
 
@@ -133,14 +145,25 @@ $btnBuild.Text = '构建检查'
 $btnBuild.Location = New-Object System.Drawing.Point(410, 445)
 $btnBuild.Size = New-Object System.Drawing.Size(90, 27)
 
+# --- 底部工具按钮（第二行：站点设置） ---
 $btnAvatar = New-Object System.Windows.Forms.Button
 $btnAvatar.Text = '更换头像...'
-$btnAvatar.Location = New-Object System.Drawing.Point(510, 445)
+$btnAvatar.Location = New-Object System.Drawing.Point(12, 480)
 $btnAvatar.Size = New-Object System.Drawing.Size(100, 27)
+
+$btnCv = New-Object System.Windows.Forms.Button
+$btnCv.Text = '更换CV...'
+$btnCv.Location = New-Object System.Drawing.Point(120, 480)
+$btnCv.Size = New-Object System.Drawing.Size(100, 27)
+
+$btnSettings = New-Object System.Windows.Forms.Button
+$btnSettings.Text = '设置...'
+$btnSettings.Location = New-Object System.Drawing.Point(228, 480)
+$btnSettings.Size = New-Object System.Drawing.Size(90, 27)
 
 # --- 状态栏 ---
 $status = New-Object System.Windows.Forms.Label
-$status.Location = New-Object System.Drawing.Point(12, 480)
+$status.Location = New-Object System.Drawing.Point(12, 518)
 $status.Size = New-Object System.Drawing.Size(810, 60)
 $status.ForeColor = [System.Drawing.Color]::Gray
 $status.Text = '就绪'
@@ -184,14 +207,24 @@ $btnImport.Add_Click({
     $ofd.Title = '选择要导入的 Word 文档'
     if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
     $status.Text = '正在从 Word 导入，请稍候...'
-    try {
+try {
         $title = Get-WordTitle -DocxPath $ofd.FileName
-        $file = New-PostFromWord -DocxPath $ofd.FileName -Title $title -Root $Root
+        $force = $false
+        $safeTitle = $title -replace '[\\/:*?"<>|]', '_'
+        if (Test-Path -LiteralPath (Join-Path $Root "source\_posts\$safeTitle.md")) {
+            $r = [System.Windows.Forms.MessageBox]::Show("文章 [$title] 已存在，是否用此 Word 文档覆盖更新？", '覆盖确认', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+            if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+            $force = $true
+        }
+        $file = New-PostFromWord -DocxPath $ofd.FileName -Title $title -Root $Root -Force:$force
         $txtTitle.Text = $title
         $status.Text = "导入成功: $title（排版已保留）"
         Refresh-List
-        [System.Windows.Forms.MessageBox]::Show("导入成功，文章标题: $title`n排版已保留。", '完成') | Out-Null
-        Start-Process notepad $file
+        if ($force) {
+            [System.Windows.Forms.MessageBox]::Show("已更新文章 [$title]，排版保留。`n点『发布』即可上线。", '更新完成') | Out-Null
+        } else {
+            [System.Windows.Forms.MessageBox]::Show("导入成功，文章标题: $title`n排版已保留。", '完成') | Out-Null
+        }
     } catch {
         $status.Text = '导入失败'
         [System.Windows.Forms.MessageBox]::Show("导入失败: $($_.Exception.Message)", '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
@@ -200,12 +233,12 @@ $btnImport.Add_Click({
 
 $btnEdit.Add_Click({
     if (-not $list.SelectedItems.Count) { return }
-    Start-Process notepad $list.SelectedItems[0].Tag
+    Open-PostInWord -MdPath $list.SelectedItems[0].Tag -Root $Root
 })
 
 $list.Add_DoubleClick({
     if (-not $list.SelectedItems.Count) { return }
-    Start-Process notepad $list.SelectedItems[0].Tag
+    Open-PostInWord -MdPath $list.SelectedItems[0].Tag -Root $Root
 })
 
 $btnDelete.Add_Click({
@@ -273,6 +306,88 @@ $btnAvatar.Add_Click({
     }
 })
 
+$btnCv.Add_Click({
+    $ofd = New-Object System.Windows.Forms.OpenFileDialog
+    $ofd.Filter = 'PDF 文件 (*.pdf)|*.pdf'
+    $ofd.Title = '选择 CV 文件（PDF）'
+    if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+    $status.Text = '正在上传 CV...'
+    try {
+        Set-ThemeCV -PdfPath $ofd.FileName -Root $Root | Out-Null
+        $status.Text = 'CV 已更新，发布后生效'
+        [System.Windows.Forms.MessageBox]::Show("CV 已更新，并已启用侧边栏『CV 下载』入口。`n`n点『发布』后 1-2 分钟线上生效。", '完成') | Out-Null
+    } catch {
+        $status.Text = 'CV 上传失败'
+        [System.Windows.Forms.MessageBox]::Show("CV 上传失败: $($_.Exception.Message)", '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+    }
+})
+
+$btnSettings.Add_Click({
+    $profile = Get-ThemeProfile -Root $Root
+    $box = New-Object System.Windows.Forms.Form
+    $box.Text = '站点设置'
+    $box.Size = New-Object System.Drawing.Size(460, 260)
+    $box.StartPosition = 'CenterScreen'
+    $box.FormBorderStyle = 'FixedDialog'
+    $box.MaximizeBox = $false
+    $box.MinimizeBox = $false
+
+    $l1 = New-Object System.Windows.Forms.Label
+    $l1.Text = '作者姓名:'
+    $l1.Location = New-Object System.Drawing.Point(15, 25)
+    $l1.AutoSize = $true
+
+    $tb1 = New-Object System.Windows.Forms.TextBox
+    $tb1.Text = $profile.Author
+    $tb1.Location = New-Object System.Drawing.Point(95, 21)
+    $tb1.Size = New-Object System.Drawing.Size(330, 23)
+
+    $l2 = New-Object System.Windows.Forms.Label
+    $l2.Text = '个人简介:'
+    $l2.Location = New-Object System.Drawing.Point(15, 60)
+    $l2.AutoSize = $true
+
+    $tb2 = New-Object System.Windows.Forms.TextBox
+    $tb2.Text = $profile.Bio
+    $tb2.Location = New-Object System.Drawing.Point(95, 56)
+    $tb2.Size = New-Object System.Drawing.Size(330, 70)
+    $tb2.Multiline = $true
+
+    $hint = New-Object System.Windows.Forms.Label
+    $hint.Text = '简介会显示在侧边栏头像下方（英文）'
+    $hint.Location = New-Object System.Drawing.Point(95, 132)
+    $hint.AutoSize = $true
+    $hint.ForeColor = [System.Drawing.Color]::Gray
+
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = '保存'
+    $ok.Location = New-Object System.Drawing.Point(95, 170)
+    $ok.DialogResult = 'OK'
+
+    $cancel = New-Object System.Windows.Forms.Button
+    $cancel.Text = '取消'
+    $cancel.Location = New-Object System.Drawing.Point(190, 170)
+    $cancel.DialogResult = 'Cancel'
+
+    $box.Controls.AddRange(@($l1, $tb1, $l2, $tb2, $hint, $ok, $cancel))
+    $box.AcceptButton = $ok
+    $box.CancelButton = $cancel
+    $box.ShowDialog() | Out-Null
+
+    if ($box.DialogResult -ne [System.Windows.Forms.DialogResult]::OK) { return }
+    $author = $tb1.Text.Trim()
+    $bio = $tb2.Text.Trim()
+    if (-not $author) { $author = $profile.Author }
+    try {
+        $bio = $bio -replace "'", ''
+        Set-ThemeProfile -Author $author -Bio $bio -Root $Root | Out-Null
+        $status.Text = '设置已保存，发布后生效'
+        [System.Windows.Forms.MessageBox]::Show("设置已保存。`n若正在本地预览，请重启预览（关闭后重新点『本地预览』）查看效果。", '完成') | Out-Null
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("保存失败: $($_.Exception.Message)", '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+    }
+})
+
 $btnBuild.Add_Click({
     $status.Text = '正在构建...'
     & npm.cmd run clean 2>&1 | Out-Null
@@ -335,10 +450,11 @@ $btnPublish.Add_Click({
 })
 
 # ---------- 组装 ----------
-$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnPreviewSel, $btnBuild, $btnAvatar, $status))
+$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnPreviewSel, $btnBuild, $btnAvatar, $btnCv, $btnSettings, $status))
 Refresh-List
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form.ShowDialog() | Out-Null
+
 
 
 

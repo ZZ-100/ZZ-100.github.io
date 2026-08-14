@@ -3,3 +3,4 @@ node_modules/
 db.json
 .DS_Store
 Thumbs.db
+.word_edits/
