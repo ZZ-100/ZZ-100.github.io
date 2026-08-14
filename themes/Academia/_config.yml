@@ -7,10 +7,9 @@ author_bio: 'PhD candidate in Economics. My research focuses on statistical anal
 since: 2026
 
 # Top Menu 顶部菜单
-# #title 为页内跳转，单页模式
-# 可以选择外链或其他页面
+# 每一项对应一个有 Word 文档的内容：主页（/，渲染 home 文档全文）由左上角站点标题承载；
+# 菜单项只放有独立文档的页面/章节
 menu:
-  Publications: /#Publications
   About: /about/
 
 # flink picture will load if avator link calls on error
