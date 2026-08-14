@@ -128,38 +128,53 @@ function Apply-AcademicStyles {
     $Doc.PageSetup.RightMargin = $Word.CentimetersToPoints(3.17)
 
     # 用 WdBuiltinStyle 数字 ID 取内置样式，避免中文版按名称查找失败
-    # wdStyleNormal=-1, wdStyleHeading1=-2, wdStyleHeading2=-3, wdStyleListBullet=-19
-    # Normal 正文：宋体小四(12pt) + Times New Roman 西文，1.5倍行距，首行缩进2字符，段后6pt
+    # wdStyleNormal=-1, wdStyleHeading1=-2, wdStyleHeading2=-3, wdStyleHeading3=-4, wdStyleListBullet=-19
+    # 排版对齐网页主题 Academia：Times New Roman + 仿宋、深灰 #494e52、1.5倍行距、无首行缩进
     $normal = $Doc.Styles.Item(-1)
-    $normal.Font.NameFarEast = '宋体'
+    $normal.Font.NameFarEast = '仿宋'
     $normal.Font.NameAscii = 'Times New Roman'
     $normal.Font.NameOther = 'Times New Roman'
-    $normal.Font.Size = 12
+    $normal.Font.Size = 13.5
+    $normal.Font.Color = $word.RGB(73, 78, 82)
     $normal.ParagraphFormat.LineSpacingRule = 1
-    $normal.ParagraphFormat.FirstLineIndent = $Word.CentimetersToPoints(0.85)
+    $normal.ParagraphFormat.FirstLineIndent = 0
     $normal.ParagraphFormat.SpaceAfter = 6
 
-    # Heading 1：黑体小三(15pt)加粗、居中、无缩进、段后12pt
+    # Heading 1：主题 h1=30px(22.5pt)、加粗、左对齐
     $h1 = $Doc.Styles.Item(-2)
-    $h1.Font.NameFarEast = '黑体'
+    $h1.Font.NameFarEast = '仿宋'
     $h1.Font.NameAscii = 'Times New Roman'
-    $h1.Font.Size = 15
+    $h1.Font.Size = 22.5
     $h1.Font.Bold = $true
-    $h1.ParagraphFormat.Alignment = 1
+    $h1.Font.Color = $word.RGB(73, 78, 82)
+    $h1.ParagraphFormat.Alignment = 0
     $h1.ParagraphFormat.FirstLineIndent = 0
     $h1.ParagraphFormat.SpaceBefore = 0
     $h1.ParagraphFormat.SpaceAfter = 12
 
-    # Heading 2：黑体四号(14pt)加粗、左对齐、段前12pt
+    # Heading 2：主题 h2=28px(21pt)、加粗、左对齐
     $h2 = $Doc.Styles.Item(-3)
-    $h2.Font.NameFarEast = '黑体'
+    $h2.Font.NameFarEast = '仿宋'
     $h2.Font.NameAscii = 'Times New Roman'
-    $h2.Font.Size = 14
+    $h2.Font.Size = 21
     $h2.Font.Bold = $true
+    $h2.Font.Color = $word.RGB(73, 78, 82)
     $h2.ParagraphFormat.Alignment = 0
     $h2.ParagraphFormat.FirstLineIndent = 0
     $h2.ParagraphFormat.SpaceBefore = 12
     $h2.ParagraphFormat.SpaceAfter = 6
+
+    # Heading 3：主题 h3=26px(19.5pt)、加粗、左对齐
+    $h3 = $Doc.Styles.Item(-4)
+    $h3.Font.NameFarEast = '仿宋'
+    $h3.Font.NameAscii = 'Times New Roman'
+    $h3.Font.Size = 19.5
+    $h3.Font.Bold = $true
+    $h3.Font.Color = $word.RGB(73, 78, 82)
+    $h3.ParagraphFormat.Alignment = 0
+    $h3.ParagraphFormat.FirstLineIndent = 0
+    $h3.ParagraphFormat.SpaceBefore = 12
+    $h3.ParagraphFormat.SpaceAfter = 6
 
     # List Bullet：此 Word 的 -19 为带大缩进的列表样式（leftChars=1600），清零更紧凑
     $bullet = $Doc.Styles.Item(-19)
