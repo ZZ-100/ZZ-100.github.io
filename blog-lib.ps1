@@ -333,7 +333,12 @@ function Get-MarkedText {
         if ($b -ne $lastB -or $it -ne $lastI) {
             if ($null -ne $lastB) { [void]$sb.Append((Get-Marks $lastB $lastI)) }
             if ($pending) { [void]$sb.Append($pending); $pending = '' }
-            [void]$sb.Append((Get-Marks $b $it))
+            $marks = Get-Marks $b $it
+            if ($marks) {
+                $t = $sb.ToString()
+                if ($t.Length -gt 0 -and $t[$t.Length - 1] -match '[A-Za-z0-9]') { [void]$sb.Append(' ') }
+                [void]$sb.Append($marks)
+            }
             $lastB = $b
             $lastI = $it
         }

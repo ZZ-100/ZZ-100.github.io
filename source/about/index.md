@@ -11,7 +11,7 @@ date: 2026-05-01 00:00:00
 
 - **Shanghai University of Finance and Economics** | Bachelor of Economics | Sep 2022-Jun 2026
 
-**Renmin University of China** | Master of Economics | Sep 2026-Jun 2029*(Expected)*
+**Renmin University of China** | Master of Economics | Sep 2026-Jun 2029 *(Expected)*
 
 ## Contact
 
