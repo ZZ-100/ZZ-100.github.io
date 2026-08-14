@@ -1,0 +1,14 @@
+extends includes/layout
+
+block content
+    .page(itemscope itemtype='http://schema.org/CreativeWork')
+        h2.page-title!= page.title
+        article!= page.content
+        if(theme.contact_items)
+            h2.page-contact Contact
+            ul.contact-list
+                each value, name in theme.contact_items
+                    li
+                        i(class=trim(value.split('||')[1]) aria-hidden="true")
+                        span
+                            a(href=url_for(trim(value.split('||')[0])) target="_blank")!= ' ' + name

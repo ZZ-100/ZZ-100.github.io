@@ -7,15 +7,14 @@
             p.author-bio= theme.author_bio
         .author-links
             button.btn.m-social-links Links
-            if(theme.social.enable)
+            if(theme.contact_items)
                 ul.social-icons
-                    each url, icon in theme.social_links
+                    each value, name in theme.contact_items
                         li
-                            a.social-icon(href=url target="_blank")
-                                i(class=icon aria-hidden="true")
-            if(theme.e_social.enable)
+                            a.social-icon(href=url_for(trim(value.split('||')[0])) target="_blank" title=name)
+                                i(class=trim(value.split('||')[1]) aria-hidden="true")
                 ul.social-links
-                    each value, name in theme.e_social_links
+                    each value, name in theme.contact_items
                         li
                             a.e-social-link(href=url_for(trim(value.split('||')[0])) target="_blank")
                                 i(class=trim(value.split('||')[1]) aria-hidden="true")
