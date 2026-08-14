@@ -293,6 +293,12 @@ function Convert-MdToWord {
             }
         }
 
+        # 页面模式不写标题时，Documents.Add 的初始空段会留在第一行 → 删除它
+        if ($isPage) {
+            $first = $doc.Paragraphs.Item(1)
+            if (-not $first.Range.Text.Trim()) { $first.Range.Delete() }
+        }
+
         $doc.SaveAs2($DocxPath, 12)
         $doc.Close($false)
         return $true
