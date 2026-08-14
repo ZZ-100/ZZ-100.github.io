@@ -20,7 +20,7 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 # ---------- 构建表单 ----------
 $form = New-Object System.Windows.Forms.Form
 $form.Text = '学术主页管理工具'
-$form.Size = New-Object System.Drawing.Size(760, 600)
+$form.Size = New-Object System.Drawing.Size(850, 600)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 
@@ -39,15 +39,20 @@ $btnNew.Text = '新建文章'
 $btnNew.Location = New-Object System.Drawing.Point(400, 12)
 $btnNew.Size = New-Object System.Drawing.Size(90, 27)
 
+$btnWordNew = New-Object System.Windows.Forms.Button
+$btnWordNew.Text = '用 Word 新建...'
+$btnWordNew.Location = New-Object System.Drawing.Point(500, 12)
+$btnWordNew.Size = New-Object System.Drawing.Size(110, 27)
+
 $btnImport = New-Object System.Windows.Forms.Button
 $btnImport.Text = '从 Word 导入...'
-$btnImport.Location = New-Object System.Drawing.Point(500, 12)
+$btnImport.Location = New-Object System.Drawing.Point(620, 12)
 $btnImport.Size = New-Object System.Drawing.Size(110, 27)
 
 $btnPublish = New-Object System.Windows.Forms.Button
 $btnPublish.Text = '发布'
-$btnPublish.Location = New-Object System.Drawing.Point(620, 12)
-$btnPublish.Size = New-Object System.Drawing.Size(60, 27)
+$btnPublish.Location = New-Object System.Drawing.Point(740, 12)
+$btnPublish.Size = New-Object System.Drawing.Size(80, 27)
 $btnPublish.BackColor = [System.Drawing.Color]::FromArgb(46, 139, 87)
 $btnPublish.ForeColor = [System.Drawing.Color]::White
 
@@ -59,7 +64,7 @@ $lblList.AutoSize = $true
 
 $list = New-Object System.Windows.Forms.ListView
 $list.Location = New-Object System.Drawing.Point(12, 72)
-$list.Size = New-Object System.Drawing.Size(720, 360)
+$list.Size = New-Object System.Drawing.Size(810, 360)
 $list.View = 'Details'
 $list.FullRowSelect = $true
 $list.MultiSelect = $false
@@ -102,7 +107,7 @@ $btnBuild.Size = New-Object System.Drawing.Size(90, 27)
 # --- 状态栏 ---
 $status = New-Object System.Windows.Forms.Label
 $status.Location = New-Object System.Drawing.Point(12, 480)
-$status.Size = New-Object System.Drawing.Size(720, 60)
+$status.Size = New-Object System.Drawing.Size(810, 60)
 $status.ForeColor = [System.Drawing.Color]::Gray
 $status.Text = '就绪'
 
@@ -117,6 +122,25 @@ $btnNew.Add_Click({
         Start-Process notepad $file
     } catch {
         [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '提示') | Out-Null
+    }
+})
+
+$btnWordNew.Add_Click({
+    $title = $txtTitle.Text.Trim()
+    if (-not $title) { $title = '新文章' }
+    $sfd = New-Object System.Windows.Forms.SaveFileDialog
+    $sfd.Filter = 'Word 文档 (*.docx)|*.docx'
+    $sfd.FileName = ($title -replace '[\\/:*?"<>|]', '_') + '.docx'
+    $sfd.InitialDirectory = [Environment]::GetFolderPath('MyDocuments')
+    if ($sfd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+    $status.Text = '正在创建 Word 草稿...'
+    try {
+        New-WordDraft -Title $title -SavePath $sfd.FileName | Out-Null
+        $status.Text = '草稿已创建，在 Word 中编辑后点"从 Word 导入"'
+        Start-Process $sfd.FileName
+        [System.Windows.Forms.MessageBox]::Show("Word 草稿已创建，样式已自动配置：`n· 标题：黑体小三 居中`n· 一级小标题：黑体四号`n· 正文：宋体小四 1.5倍行距 首行缩进`n`n编辑保存后，点『从 Word 导入』选择此文件即可发布。", '已创建') | Out-Null
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show("创建失败: $($_.Exception.Message)", '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
     }
 })
 
@@ -228,7 +252,9 @@ $btnPublish.Add_Click({
 })
 
 # ---------- 组装 ----------
-$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnBuild, $status))
+$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnBuild, $status))
 Refresh-List
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form.ShowDialog() | Out-Null
+
+

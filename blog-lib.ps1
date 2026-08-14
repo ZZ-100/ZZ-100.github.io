@@ -101,6 +101,74 @@ function New-BlankPost {
     return $file
 }
 
+# ---------- 新建 Word 草稿（自动配置学术风格） ----------
+function New-WordDraft {
+    param([string]$Title, [string]$SavePath)
+    $word = New-Object -ComObject Word.Application
+    try {
+        $word.Visible = $false
+        $word.DisplayAlerts = 0
+        $doc = $word.Documents.Add()
+
+        # 页边距：上下 2.54cm，左右 3.17cm
+        $doc.PageSetup.TopMargin = $word.CentimetersToPoints(2.54)
+        $doc.PageSetup.BottomMargin = $word.CentimetersToPoints(2.54)
+        $doc.PageSetup.LeftMargin = $word.CentimetersToPoints(3.17)
+        $doc.PageSetup.RightMargin = $word.CentimetersToPoints(3.17)
+
+        # 用 WdBuiltinStyle 数字 ID 取内置样式，避免中文版按名称查找失败
+        # wdStyleNormal=-1, wdStyleHeading1=-2, wdStyleHeading2=-3
+        # Normal 正文：宋体小四(12pt) + Times New Roman 西文，1.5倍行距，首行缩进2字符，段后6pt
+        $normal = $doc.Styles.Item(-1)
+        $normal.Font.NameFarEast = '宋体'
+        $normal.Font.NameAscii = 'Times New Roman'
+        $normal.Font.NameOther = 'Times New Roman'
+        $normal.Font.Size = 12
+        $normal.ParagraphFormat.LineSpacingRule = 1
+        $normal.ParagraphFormat.FirstLineIndent = $word.CentimetersToPoints(0.85)
+        $normal.ParagraphFormat.SpaceAfter = 6
+
+        # Heading 1：黑体小三(15pt)加粗、居中、无缩进、段后12pt
+        $h1 = $doc.Styles.Item(-2)
+        $h1.Font.NameFarEast = '黑体'
+        $h1.Font.NameAscii = 'Times New Roman'
+        $h1.Font.Size = 15
+        $h1.Font.Bold = $true
+        $h1.ParagraphFormat.Alignment = 1
+        $h1.ParagraphFormat.FirstLineIndent = 0
+        $h1.ParagraphFormat.SpaceBefore = 0
+        $h1.ParagraphFormat.SpaceAfter = 12
+
+        # Heading 2：黑体四号(14pt)加粗、左对齐、段前12pt
+        $h2 = $doc.Styles.Item(-3)
+        $h2.Font.NameFarEast = '黑体'
+        $h2.Font.NameAscii = 'Times New Roman'
+        $h2.Font.Size = 14
+        $h2.Font.Bold = $true
+        $h2.ParagraphFormat.Alignment = 0
+        $h2.ParagraphFormat.FirstLineIndent = 0
+        $h2.ParagraphFormat.SpaceBefore = 12
+        $h2.ParagraphFormat.SpaceAfter = 6
+
+        # 首行 = 文章标题（Heading 1 居中），并写入文档标题属性
+        $r = $doc.Paragraphs.Item(1).Range
+        $r.Text = $Title
+        $r.Style = -2   # wdStyleHeading1
+        try {
+            $prop = $doc.BuiltInDocumentProperties.Item('Title')
+            if ($prop) { $prop.Value = $Title }
+        } catch { }
+
+        # 保存为 docx (wdFormatXMLDocument = 12)
+        $doc.SaveAs2($SavePath, 12)
+        $doc.Close($false)
+        return $true
+    } finally {
+        $word.Quit()
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
+    }
+}
+
 # ---------- Git 发布 ----------
 function Publish-Git {
     param([string]$Message, [string]$Root)
@@ -118,4 +186,7 @@ function Publish-Git {
         Pop-Location
     }
 }
+
+
+
 
