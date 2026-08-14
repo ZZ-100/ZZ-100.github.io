@@ -135,7 +135,7 @@ function Apply-AcademicStyles {
     $normal.Font.NameAscii = 'Times New Roman'
     $normal.Font.NameOther = 'Times New Roman'
     $normal.Font.Size = 13.5
-    $normal.Font.Color = $word.RGB(73, 78, 82)
+    $normal.Font.Color = 0x524E49
     $normal.ParagraphFormat.LineSpacingRule = 1
     $normal.ParagraphFormat.FirstLineIndent = 0
     $normal.ParagraphFormat.SpaceAfter = 6
@@ -146,7 +146,7 @@ function Apply-AcademicStyles {
     $h1.Font.NameAscii = 'Times New Roman'
     $h1.Font.Size = 22.5
     $h1.Font.Bold = $true
-    $h1.Font.Color = $word.RGB(73, 78, 82)
+    $h1.Font.Color = 0x524E49
     $h1.ParagraphFormat.Alignment = 0
     $h1.ParagraphFormat.FirstLineIndent = 0
     $h1.ParagraphFormat.SpaceBefore = 0
@@ -158,7 +158,7 @@ function Apply-AcademicStyles {
     $h2.Font.NameAscii = 'Times New Roman'
     $h2.Font.Size = 21
     $h2.Font.Bold = $true
-    $h2.Font.Color = $word.RGB(73, 78, 82)
+    $h2.Font.Color = 0x524E49
     $h2.ParagraphFormat.Alignment = 0
     $h2.ParagraphFormat.FirstLineIndent = 0
     $h2.ParagraphFormat.SpaceBefore = 12
@@ -170,7 +170,7 @@ function Apply-AcademicStyles {
     $h3.Font.NameAscii = 'Times New Roman'
     $h3.Font.Size = 19.5
     $h3.Font.Bold = $true
-    $h3.Font.Color = $word.RGB(73, 78, 82)
+    $h3.Font.Color = 0x524E49
     $h3.ParagraphFormat.Alignment = 0
     $h3.ParagraphFormat.FirstLineIndent = 0
     $h3.ParagraphFormat.SpaceBefore = 12
