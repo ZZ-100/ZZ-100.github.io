@@ -86,7 +86,7 @@ function Refresh-List {
         $pageFile = Join-Path $d.FullName 'index.md'
         if (Test-Path -LiteralPath $pageFile) {
             $item = New-Object System.Windows.Forms.ListViewItem($d.Name)
-            $item.SubItems.Add('(页面)') | Out-Null
+            $item.SubItems.Add((Get-Item -LiteralPath $pageFile).LastWriteTime.ToString('yyyy-MM-dd HH:mm')) | Out-Null
             $item.Tag = $pageFile
             $list.Items.Add($item) | Out-Null
         }
