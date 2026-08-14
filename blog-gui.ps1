@@ -556,20 +556,24 @@ $btnMenu.Add_Click({
         return
     }
     $dlg = New-Object System.Windows.Forms.Form
-    $dlg.Text = '调整导航栏顺序'
-    $dlg.Size = New-Object System.Drawing.Size(330, 320)
+    $dlg.Text = '调整导航栏'
+    $dlg.Size = New-Object System.Drawing.Size(340, 350)
     $dlg.StartPosition = 'CenterParent'
     $dlg.FormBorderStyle = 'FixedDialog'
     $dlg.MaximizeBox = $false
     $dlg.MinimizeBox = $false
     $lbl = New-Object System.Windows.Forms.Label
-    $lbl.Text = '选中一项，用上移/下移调整顺序（确定后发布生效）:'
+    $lbl.Text = '选中一项：上移/下移调顺序，下方可改显示标题:'
     $lbl.Location = New-Object System.Drawing.Point(12, 10)
-    $lbl.Size = New-Object System.Drawing.Size(290, 30)
+    $lbl.Size = New-Object System.Drawing.Size(300, 30)
     $lst = New-Object System.Windows.Forms.ListBox
     $lst.Location = New-Object System.Drawing.Point(12, 44)
-    $lst.Size = New-Object System.Drawing.Size(180, 140)
-    foreach ($it in $cfg.Items) { [void]$lst.Items.Add($it.Key) }
+    $lst.Size = New-Object System.Drawing.Size(180, 110)
+    $slotKeys = New-Object System.Collections.Generic.List[string]
+    foreach ($it in $cfg.Items) {
+        [void]$lst.Items.Add($it.Key)
+        $slotKeys.Add($it.Key)
+    }
     $btnUp = New-Object System.Windows.Forms.Button
     $btnUp.Text = '上移'
     $btnUp.Location = New-Object System.Drawing.Point(210, 60)
@@ -578,26 +582,67 @@ $btnMenu.Add_Click({
     $btnDown.Text = '下移'
     $btnDown.Location = New-Object System.Drawing.Point(210, 96)
     $btnDown.Size = New-Object System.Drawing.Size(90, 27)
+    $lblTitle = New-Object System.Windows.Forms.Label
+    $lblTitle.Text = '显示标题:'
+    $lblTitle.Location = New-Object System.Drawing.Point(12, 168)
+    $lblTitle.AutoSize = $true
+    $txtTitle = New-Object System.Windows.Forms.TextBox
+    $txtTitle.Location = New-Object System.Drawing.Point(78, 165)
+    $txtTitle.Size = New-Object System.Drawing.Size(112, 23)
+    $btnApply = New-Object System.Windows.Forms.Button
+    $btnApply.Text = '应用标题'
+    $btnApply.Location = New-Object System.Drawing.Point(198, 163)
+    $btnApply.Size = New-Object System.Drawing.Size(102, 27)
     $btnOK = New-Object System.Windows.Forms.Button
     $btnOK.Text = '确定'
-    $btnOK.Location = New-Object System.Drawing.Point(12, 230)
+    $btnOK.Location = New-Object System.Drawing.Point(12, 260)
     $btnOK.Size = New-Object System.Drawing.Size(90, 27)
     $btnCancel = New-Object System.Windows.Forms.Button
     $btnCancel.Text = '取消'
-    $btnCancel.Location = New-Object System.Drawing.Point(110, 230)
+    $btnCancel.Location = New-Object System.Drawing.Point(110, 260)
     $btnCancel.Size = New-Object System.Drawing.Size(90, 27)
+    $lst.Add_SelectedIndexChanged({
+        if ($lst.SelectedIndex -ge 0) { $txtTitle.Text = "$($lst.SelectedItem)" }
+    })
     $btnUp.Add_Click({
         $i = $lst.SelectedIndex
-        if ($i -gt 0) { $t = $lst.Items[$i]; $lst.Items[$i] = $lst.Items[$i - 1]; $lst.Items[$i - 1] = $t; $lst.SelectedIndex = $i - 1 }
+        if ($i -gt 0) {
+            $t = $lst.Items[$i]; $lst.Items[$i] = $lst.Items[$i - 1]; $lst.Items[$i - 1] = $t
+            $k = $slotKeys[$i]; $slotKeys[$i] = $slotKeys[$i - 1]; $slotKeys[$i - 1] = $k
+            $lst.SelectedIndex = $i - 1
+        }
     })
     $btnDown.Add_Click({
         $i = $lst.SelectedIndex
-        if ($i -ge 0 -and $i -lt $lst.Items.Count - 1) { $t = $lst.Items[$i]; $lst.Items[$i] = $lst.Items[$i + 1]; $lst.Items[$i + 1] = $t; $lst.SelectedIndex = $i + 1 }
+        if ($i -ge 0 -and $i -lt $lst.Items.Count - 1) {
+            $t = $lst.Items[$i]; $lst.Items[$i] = $lst.Items[$i + 1]; $lst.Items[$i + 1] = $t
+            $k = $slotKeys[$i]; $slotKeys[$i] = $slotKeys[$i + 1]; $slotKeys[$i + 1] = $k
+            $lst.SelectedIndex = $i + 1
+        }
+    })
+    $btnApply.Add_Click({
+        $i = $lst.SelectedIndex
+        if ($i -lt 0) { return }
+        $new = $txtTitle.Text.Trim()
+        if (-not $new) { [System.Windows.Forms.MessageBox]::Show('显示标题不能为空', '提示') | Out-Null; return }
+        for ($k = 0; $k -lt $lst.Items.Count; $k++) {
+            if ($k -ne $i -and "$($lst.Items[$k])" -eq $new) {
+                [System.Windows.Forms.MessageBox]::Show("显示标题重复: $new", '提示') | Out-Null
+                return
+            }
+        }
+        $lst.Items[$i] = $new
+        $txtTitle.Text = $new
     })
     $btnOK.Add_Click({
-        $order = @($lst.Items | ForEach-Object { "$_" })
+        $order = @($slotKeys)
+        $rename = @{}
+        for ($k = 0; $k -lt $slotKeys.Count; $k++) {
+            $cur = "$($lst.Items[$k])"
+            if ($cur -ne $slotKeys[$k]) { $rename[$slotKeys[$k]] = $cur }
+        }
         try {
-            Set-MenuOrder -Root $Root -Order $order | Out-Null
+            Set-MenuOrder -Root $Root -Order $order -Rename $rename | Out-Null
             $dlg.DialogResult = [System.Windows.Forms.DialogResult]::OK
             $dlg.Close()
         } catch {
@@ -605,7 +650,7 @@ $btnMenu.Add_Click({
         }
     })
     $btnCancel.Add_Click({ $dlg.DialogResult = [System.Windows.Forms.DialogResult]::Cancel; $dlg.Close() })
-    $dlg.Controls.AddRange(@($lbl, $lst, $btnUp, $btnDown, $btnOK, $btnCancel))
+    $dlg.Controls.AddRange(@($lbl, $lst, $btnUp, $btnDown, $lblTitle, $txtTitle, $btnApply, $btnOK, $btnCancel))
     if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
         $status.Text = '导航栏顺序已更新，点『发布』生效'
     }

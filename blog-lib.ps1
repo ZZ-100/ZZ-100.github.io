@@ -554,9 +554,10 @@ function Get-MenuOrder {
     return [pscustomobject]@{ Path = $cfgPath; Lines = $lines; Items = $items }
 }
 
-# ---------- 按新顺序写回主题导航菜单 ----------
+# ---------- 按新顺序写回主题导航菜单（可同时改显示标题） ----------
+# Order: 新顺序的菜单 key 列表；Rename: 原 key → 新显示标题（可选）
 function Set-MenuOrder {
-    param([string]$Root, [string[]]$Order)
+    param([string]$Root, [string[]]$Order, [hashtable]$Rename)
     $cfg = Get-MenuOrder -Root $Root
     if ($Order.Count -ne $cfg.Items.Count) { throw "菜单项数量不匹配（期望 $($cfg.Items.Count)，传入 $($Order.Count)）" }
     $byKey = @{}
@@ -564,11 +565,18 @@ function Set-MenuOrder {
     $slots = @($cfg.Items | ForEach-Object { $_.Line })   # 原槽位行号（按原顺序）
     $lines = New-Object System.Collections.Generic.List[string]
     foreach ($ln in $cfg.Lines) { $lines.Add($ln) }
+    $newKeys = @()
     for ($n = 0; $n -lt $Order.Count; $n++) {
         $it = $byKey[$Order[$n]]
         if (-not $it) { throw "菜单项不存在: $($Order[$n])" }
-        $lines[$slots[$n]] = "$($it.Indent)$($it.Key): $($it.Value)"
+        $key = $it.Key
+        if ($Rename -and $Rename.ContainsKey($key)) { $key = $Rename[$key] }
+        if (-not $key) { throw '菜单显示标题不能为空' }
+        $newKeys += $key
+        $lines[$slots[$n]] = "$($it.Indent)$($key): $($it.Value)"
     }
+    $dups = $newKeys | Group-Object | Where-Object { $_.Count -gt 1 }
+    if ($dups) { throw "菜单显示标题重复: $((($dups | ForEach-Object { $_.Name }) -join ', '))" }
     [System.IO.File]::WriteAllText($cfg.Path, ($lines -join "`n"), (New-Object System.Text.UTF8Encoding($false)))
     return $cfg.Path
 }
