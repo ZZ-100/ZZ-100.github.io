@@ -221,8 +221,25 @@ $btnImport.Add_Click({
     $ofd = New-Object System.Windows.Forms.OpenFileDialog
     $ofd.Filter = 'Word 文档 (*.docx;*.doc)|*.docx;*.doc'
     $ofd.Title = '选择要导入的 Word 文档'
-    if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
     $status.Text = '正在从 Word 导入，请稍候...'
+    # 页面往返：docx 文件名匹配 source\<名>\index.md → 直接更新页面
+    $pageBase = [System.IO.Path]::GetFileNameWithoutExtension($ofd.FileName)
+    $pageMd = Join-Path $Root "source\$pageBase\index.md"
+    if (Test-Path -LiteralPath $pageMd) {
+        $r = [System.Windows.Forms.MessageBox]::Show("更新页面 [$pageBase] 的内容吗？", '确认更新页面', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+        try {
+            Convert-WordToPageMd -DocxPath $ofd.FileName -PageMd $pageMd
+            $status.Text = "已更新页面: $pageBase"
+            Refresh-List
+            [System.Windows.Forms.MessageBox]::Show("页面 [$pageBase] 已更新，点『发布』即可上线。", '完成') | Out-Null
+        } catch {
+            $status.Text = '页面更新失败'
+            [System.Windows.Forms.MessageBox]::Show("页面更新失败: $($_.Exception.Message)", '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        }
+        return
+    }
 try {
         $title = Get-WordTitle -DocxPath $ofd.FileName
         $force = $false

@@ -9,11 +9,11 @@ PhD candidate in Economics. My research focuses on statistical analysis, applied
 
 ## Research Interests
 
-- [������]
+- [（示例）研究兴趣待补充]
 
 ## Education
 
-- [�������������]
+- [（示例）教育经历待补充]
 
 ## Contact
 

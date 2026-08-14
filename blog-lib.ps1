@@ -186,15 +186,20 @@ function New-WordDraft {
 }
 
 # ---------- 将 md 文章转换为带样式的 Word 文档 ----------
-# 在文档末尾追加一个段落（Range 方式，避免 Paragraphs.Add 覆盖问题）
+# 在文档末尾追加一个段落（Selection 方式）
+# 注意：EndKey(6) 只把光标移到最后一个段落符之前（行尾），需先 TypeParagraph
+# 新建段落再输入；样式必须显式设置，否则新段落会继承前一段样式。
 function Add-WordPara {
-    param([object]$Doc, [string]$Text, [int]$Style)
-    $r = $Doc.Range($Doc.Content.End - 1, $Doc.Content.End - 1)
-    $r.Text = $Text
-    $r.InsertParagraphAfter()
-    $p = $r.Paragraphs.Item(1)
-    if ($Style -ne -1) { $p.Style = $Style }
-    return $r
+    param([object]$Word, [object]$Doc, [string]$Text, [int]$Style)
+    $Doc.Activate()
+    $sel = $Word.Selection
+    if (-not $sel) { throw '无法获取 Word Selection' }
+    $sel.EndKey(6)          # wdStory：光标移到文档末尾（最后一个段落行尾）
+    $sel.TypeParagraph()    # 新建段落，光标落于新段落开头
+    $sel.TypeText($Text)
+    $p = $sel.Paragraphs.Item(1)
+    $p.Style = $Style       # 显式设置样式（-1=Normal，避免继承前段样式）
+    return $p.Range
 }
 
 function Convert-MdToWord {
@@ -213,6 +218,7 @@ function Convert-MdToWord {
         $word.Visible = $false
         $word.DisplayAlerts = 0
         $doc = $word.Documents.Add()
+        $null = $word.Selection   # 预初始化 Selection（Visible=false 时首次访问可能为 null）
         Apply-AcademicStyles -Word $word -Doc $doc
 
         # 标题
@@ -229,20 +235,20 @@ function Convert-MdToWord {
             $trimmed = $line.Trim()
             if (-not $trimmed) { continue }
             if ($trimmed -match '^#{2,6}\s+(.*)') {
-                Add-WordPara -Doc $doc -Text $Matches[1] -Style -3
+                Add-WordPara -Word $word -Doc $doc -Text $Matches[1] -Style -3
                 continue
             }
             if ($trimmed -match '^#\s+(.*)') {
-                Add-WordPara -Doc $doc -Text $Matches[1] -Style -2
+                Add-WordPara -Word $word -Doc $doc -Text $Matches[1] -Style -2
                 continue
             }
             if ($trimmed -match '^[-*]\s+(.*)') {
-                Add-WordPara -Doc $doc -Text $Matches[1] -Style -19   # List Bullet
+                Add-WordPara -Word $word -Doc $doc -Text $Matches[1] -Style -19   # List Bullet
                 continue
             }
             # 普通段落 + 加粗
             $clean = $line -replace '\*\*(.+?)\*\*', '$1'
-            $r = Add-WordPara -Doc $doc -Text $clean -Style -1
+            $r = Add-WordPara -Word $word -Doc $doc -Text $clean -Style -1
             $offset = 0
             foreach ($m in [regex]::Matches($line, '\*\*(.+?)\*\*')) {
                 $start = $r.Start + ($m.Index - $offset)
@@ -257,6 +263,65 @@ function Convert-MdToWord {
         $doc.SaveAs2($DocxPath, 12)
         $doc.Close($false)
         return $true
+    } finally {
+        $word.Quit()
+        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
+    }
+}
+
+# ---------- 将页面 Word 文档转换回页面 md（页面往返编辑用） ----------
+# 按段落样式重建 markdown：Heading2→##、List Bullet→- 行、Normal→正文；
+# 首段 Heading1（页面标题）保留原 front-matter title 不覆盖。
+function Convert-WordToPageMd {
+    param([string]$DocxPath, [string]$PageMd)
+    $old = Get-Content -LiteralPath $PageMd -Raw -Encoding UTF8
+    $fm = ''
+    if ($old -match '(?s)^---\r?\n(.*?)\r?\n---') { $fm = $Matches[1].TrimEnd() }
+
+    $word = New-Object -ComObject Word.Application
+    try {
+        $word.Visible = $false
+        $word.DisplayAlerts = 0
+        $doc = $word.Documents.Open($DocxPath, $false, $true)
+        $styleH1 = $doc.Styles.Item(-2).NameLocal
+        $styleH2 = $doc.Styles.Item(-3).NameLocal
+        $styleBullet = $doc.Styles.Item(-19).NameLocal
+
+        $lines = New-Object System.Collections.Generic.List[string]
+        $skipTitle = $true
+        foreach ($p in $doc.Paragraphs) {
+            $name = $p.Style.NameLocal
+            $text = ($p.Range.Text -replace '[\r\n\x07]', '').Trim()
+            if (-not $text) { continue }
+            $bold = ($p.Range.Bold -eq -1)
+            if ($name -eq $styleH1) {
+                if ($skipTitle) { $skipTitle = $false; continue }
+                $lines.Add("# $text")
+            } elseif ($name -eq $styleH2) {
+                $lines.Add("## $text")
+            } elseif ($name -eq $styleBullet) {
+                if ($bold) { $lines.Add("- **$text**") } else { $lines.Add("- $text") }
+            } else {
+                if ($bold) { $lines.Add("**$text**") } else { $lines.Add($text) }
+            }
+        }
+        $doc.Close($false)
+
+        # 组装 md：列表行连续、其余行之间空行（保证 markdown 段落/列表正确解析）
+        $body = New-Object System.Collections.Generic.List[string]
+        $prev = ''
+        foreach ($line in $lines) {
+            $cur = if ($line -match '^[-*] ') { 'list' } elseif ($line -match '^#{1,6} ') { 'head' } else { 'para' }
+            if ($body.Count) {
+                if ($prev -eq 'list' -and $cur -eq 'list') { $body.Add($line) }
+                else { $body.Add(''); $body.Add($line) }
+            } else { $body.Add($line) }
+            $prev = $cur
+        }
+
+        $content = "---`n$fm`n---`n`n" + ($body -join "`n") + "`n"
+        Set-Content -LiteralPath $PageMd -Value $content -Encoding UTF8
+        return $PageMd
     } finally {
         $word.Quit()
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
