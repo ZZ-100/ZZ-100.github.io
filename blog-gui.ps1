@@ -127,7 +127,8 @@ function Open-PostInWord {
     param([string]$MdPath, [string]$Root)
     $editDir = Join-Path $Root '.word_edits'
     if (-not (Test-Path -LiteralPath $editDir)) { New-Item -ItemType Directory -Path $editDir | Out-Null }
-    $slug = [System.IO.Path]::GetFileNameWithoutExtension($MdPath)
+    # 独立页面 source\<dir>\index.md → 用目录名作文件名（about.docx），避免歧义
+    if ($MdPath -match 'source\\([^\\]+)\\index\.md$') { $slug = $Matches[1] } else { $slug = [System.IO.Path]::GetFileNameWithoutExtension($MdPath) }
     $docx = Join-Path $editDir ($slug + '.docx')
     Convert-MdToWord -MdPath $MdPath -DocxPath $docx
     Start-Process $docx
