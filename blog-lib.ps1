@@ -364,18 +364,9 @@ function Convert-MdToWord {
         $null = $word.Selection   # 预初始化 Selection（Visible=false 时首次访问可能为 null）
         Apply-AcademicStyles -Word $word -Doc $doc
 
-        # 标题：独立页面（source\xxx\index.md）不写首段标题——页面标题由 front-matter title / 模板渲染，
-        # 若写进 Word 会让用户删除后重新生成又出现；仍写入文档属性 Title 以便 Get-WordTitle 识别
-        $isPage = $MdPath -match '\\index\.md$'
-        if (-not $isPage) {
-            $p = $doc.Paragraphs.Item(1)
-            $p.Range.Text = $title
-            $p.Style = -2
-        }
-        try {
-            $prop = $doc.BuiltInDocumentProperties.Item('Title')
-            if ($prop) { $prop.Value = $title }
-        } catch { }
+        # 不写首段标题（页面和文章一致）——标题由 front-matter title / 模板渲染，
+        # 若写进 Word 会让用户删除后重新生成又出现，且删除后 Get-WordTitle 会误取正文首段；
+        # （PS 5.1 COM 下 BuiltInDocumentProperties 不可用，不尝试写文档属性）
 
         # 正文逐行转换（# 标题 / **加粗** / - 列表 / 段落）
         foreach ($line in ($body -split "`r?`n")) {
@@ -398,11 +389,9 @@ function Convert-MdToWord {
             Add-WordPara -Word $word -Doc $doc -Text $line -Style -1
         }
 
-        # 页面模式不写标题时，Documents.Add 的初始空段会留在第一行 → 删除它
-        if ($isPage) {
-            $first = $doc.Paragraphs.Item(1)
-            if (-not $first.Range.Text.Trim()) { $first.Range.Delete() }
-        }
+        # Documents.Add 的初始空段会留在第一行 → 删除它
+        $first = $doc.Paragraphs.Item(1)
+        if (-not $first.Range.Text.Trim()) { $first.Range.Delete() }
 
         $doc.SaveAs2($DocxPath, 12)
         $doc.Close($false)

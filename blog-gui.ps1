@@ -269,12 +269,23 @@ try {
         $title = Get-WordTitle -DocxPath $docxPath
         $force = $false
         $safeTitle = $title -replace '[\\/:*?"<>|]', '_'
-        if (Test-Path -LiteralPath (Join-Path $Root "source\_posts\$safeTitle.md")) {
-            $r = [System.Windows.Forms.MessageBox]::Show("文章 [$title] 已存在，是否用此 Word 文档覆盖更新？", '覆盖确认', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        # 优先按 docx 文件名映射已有文章（Word 里删除标题段后 Get-WordTitle 会取正文首段）；
+        # 已有文章时标题以 md front-matter 为准（Word 文档属性在 PS COM 下不可用）
+        $docBase = [System.IO.Path]::GetFileNameWithoutExtension($docxPath)
+        $docMd = Join-Path $Root "source\_posts\$docBase.md"
+        if (Test-Path -LiteralPath $docMd) {
+            $postMd = $docMd
+            $c = Get-Content -LiteralPath $docMd -Raw -Encoding UTF8
+            if ($c -match '(?m)^title:\s*(.+)$') { $title = $Matches[1].Trim() }
+        } else {
+            $postMd = Join-Path $Root "source\_posts\$safeTitle.md"
+        }
+        if (Test-Path -LiteralPath $postMd) {
+            $r = [System.Windows.Forms.MessageBox]::Show("文章 [$(Split-Path $postMd -Leaf)] 已存在，是否用此 Word 文档覆盖更新？", '覆盖确认', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
             if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
             $force = $true
         }
-        $file = New-PostFromWord -DocxPath $docxPath -Title $title -Root $Root -Force:$force
+        $file = New-PostFromWord -DocxPath $docxPath -Title $title -Root $Root -Force:$force -TargetFile $postMd
         $txtTitle.Text = $title
         $status.Text = "导入成功: $title（排版已保留）"
         Refresh-List
