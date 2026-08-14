@@ -58,7 +58,7 @@ $btnPublish.ForeColor = [System.Drawing.Color]::White
 
 # --- 文章列表 ---
 $lblList = New-Object System.Windows.Forms.Label
-$lblList.Text = '已有文章（双击编辑）:'
+$lblList.Text = '已有文章（双击=编辑源码，选中后点"预览选中"看网页效果）:'
 $lblList.Location = New-Object System.Drawing.Point(12, 50)
 $lblList.AutoSize = $true
 
@@ -132,6 +132,11 @@ $btnBuild = New-Object System.Windows.Forms.Button
 $btnBuild.Text = '构建检查'
 $btnBuild.Location = New-Object System.Drawing.Point(410, 445)
 $btnBuild.Size = New-Object System.Drawing.Size(90, 27)
+
+$btnAvatar = New-Object System.Windows.Forms.Button
+$btnAvatar.Text = '更换头像...'
+$btnAvatar.Location = New-Object System.Drawing.Point(510, 445)
+$btnAvatar.Size = New-Object System.Drawing.Size(100, 27)
 
 # --- 状态栏 ---
 $status = New-Object System.Windows.Forms.Label
@@ -231,6 +236,43 @@ $btnPreviewSel.Add_Click({
     $status.Text = '已打开浏览器预览该文章'
 })
 
+$btnAvatar.Add_Click({
+    $ofd = New-Object System.Windows.Forms.OpenFileDialog
+    $ofd.Filter = '图片文件 (*.jpg;*.jpeg;*.png;*.bmp;*.gif)|*.jpg;*.jpeg;*.png;*.bmp;*.gif'
+    $ofd.Title = '选择头像图片（建议方形照片，自动裁剪居中并缩放）'
+    if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+    $status.Text = '正在处理头像...'
+    try {
+        $imgDir = Join-Path $Root 'source\img'
+        if (-not (Test-Path -LiteralPath $imgDir)) { New-Item -ItemType Directory -Path $imgDir | Out-Null }
+        $dest = Join-Path $imgDir 'profile.png'
+        $src = [System.Drawing.Image]::FromFile($ofd.FileName)
+        try {
+            $side = [Math]::Min($src.Width, $src.Height)
+            $cropX = [Math]::Floor(($src.Width - $side) / 2)
+            $cropY = [Math]::Floor(($src.Height - $side) / 2)
+            $size = 400
+            $bmp = New-Object System.Drawing.Bitmap($size, $size)
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            try {
+                $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+                $g.Clear([System.Drawing.Color]::White)
+                $srcRect = New-Object System.Drawing.Rectangle($cropX, $cropY, $side, $side)
+                $dstRect = New-Object System.Drawing.Rectangle(0, 0, $size, $size)
+                $g.DrawImage($src, $dstRect, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)
+            } finally { $g.Dispose() }
+            $bmp.Save($dest, [System.Drawing.Imaging.ImageFormat]::Png)
+            $bmp.Dispose()
+        } finally { $src.Dispose() }
+        $status.Text = '头像已更新，发布后生效'
+        [System.Windows.Forms.MessageBox]::Show("头像已更新为 400x400 居中裁剪。`n`n点『发布』后 1-2 分钟线上生效。", '完成') | Out-Null
+    } catch {
+        $status.Text = '头像处理失败'
+        [System.Windows.Forms.MessageBox]::Show("头像处理失败: $($_.Exception.Message)", '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+    }
+})
+
 $btnBuild.Add_Click({
     $status.Text = '正在构建...'
     & npm.cmd run clean 2>&1 | Out-Null
@@ -293,10 +335,11 @@ $btnPublish.Add_Click({
 })
 
 # ---------- 组装 ----------
-$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnPreviewSel, $btnBuild, $status))
+$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnPreviewSel, $btnBuild, $btnAvatar, $status))
 Refresh-List
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form.ShowDialog() | Out-Null
+
 
 
 
