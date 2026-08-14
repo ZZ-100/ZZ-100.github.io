@@ -191,6 +191,11 @@ $btnSettings.Text = '设置...'
 $btnSettings.Location = New-Object System.Drawing.Point(228, 480)
 $btnSettings.Size = New-Object System.Drawing.Size(90, 27)
 
+$btnMenu = New-Object System.Windows.Forms.Button
+$btnMenu.Text = '导航栏顺序...'
+$btnMenu.Location = New-Object System.Drawing.Point(326, 480)
+$btnMenu.Size = New-Object System.Drawing.Size(110, 27)
+
 # --- 状态栏 ---
 $status = New-Object System.Windows.Forms.Label
 $status.Location = New-Object System.Drawing.Point(12, 518)
@@ -542,8 +547,72 @@ if ($box.DialogResult -ne [System.Windows.Forms.DialogResult]::OK) { return }
     }
 })
 
+$btnMenu.Add_Click({
+    $cfg = $null
+    try {
+        $cfg = Get-MenuOrder -Root $Root
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        return
+    }
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = '调整导航栏顺序'
+    $dlg.Size = New-Object System.Drawing.Size(330, 320)
+    $dlg.StartPosition = 'CenterParent'
+    $dlg.FormBorderStyle = 'FixedDialog'
+    $dlg.MaximizeBox = $false
+    $dlg.MinimizeBox = $false
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = '选中一项，用上移/下移调整顺序（确定后发布生效）:'
+    $lbl.Location = New-Object System.Drawing.Point(12, 10)
+    $lbl.Size = New-Object System.Drawing.Size(290, 30)
+    $lst = New-Object System.Windows.Forms.ListBox
+    $lst.Location = New-Object System.Drawing.Point(12, 44)
+    $lst.Size = New-Object System.Drawing.Size(180, 140)
+    foreach ($it in $cfg.Items) { [void]$lst.Items.Add($it.Key) }
+    $btnUp = New-Object System.Windows.Forms.Button
+    $btnUp.Text = '上移'
+    $btnUp.Location = New-Object System.Drawing.Point(210, 60)
+    $btnUp.Size = New-Object System.Drawing.Size(90, 27)
+    $btnDown = New-Object System.Windows.Forms.Button
+    $btnDown.Text = '下移'
+    $btnDown.Location = New-Object System.Drawing.Point(210, 96)
+    $btnDown.Size = New-Object System.Drawing.Size(90, 27)
+    $btnOK = New-Object System.Windows.Forms.Button
+    $btnOK.Text = '确定'
+    $btnOK.Location = New-Object System.Drawing.Point(12, 230)
+    $btnOK.Size = New-Object System.Drawing.Size(90, 27)
+    $btnCancel = New-Object System.Windows.Forms.Button
+    $btnCancel.Text = '取消'
+    $btnCancel.Location = New-Object System.Drawing.Point(110, 230)
+    $btnCancel.Size = New-Object System.Drawing.Size(90, 27)
+    $btnUp.Add_Click({
+        $i = $lst.SelectedIndex
+        if ($i -gt 0) { $t = $lst.Items[$i]; $lst.Items[$i] = $lst.Items[$i - 1]; $lst.Items[$i - 1] = $t; $lst.SelectedIndex = $i - 1 }
+    })
+    $btnDown.Add_Click({
+        $i = $lst.SelectedIndex
+        if ($i -ge 0 -and $i -lt $lst.Items.Count - 1) { $t = $lst.Items[$i]; $lst.Items[$i] = $lst.Items[$i + 1]; $lst.Items[$i + 1] = $t; $lst.SelectedIndex = $i + 1 }
+    })
+    $btnOK.Add_Click({
+        $order = @($lst.Items | ForEach-Object { "$_" })
+        try {
+            Set-MenuOrder -Root $Root -Order $order | Out-Null
+            $dlg.DialogResult = [System.Windows.Forms.DialogResult]::OK
+            $dlg.Close()
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show("保存失败: $($_.Exception.Message)", '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        }
+    })
+    $btnCancel.Add_Click({ $dlg.DialogResult = [System.Windows.Forms.DialogResult]::Cancel; $dlg.Close() })
+    $dlg.Controls.AddRange(@($lbl, $lst, $btnUp, $btnDown, $btnOK, $btnCancel))
+    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $status.Text = '导航栏顺序已更新，点『发布』生效'
+    }
+})
+
 # ---------- 组装 ----------
-$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnPreviewSel, $btnBuild, $btnAvatar, $btnCv, $btnSettings, $status))
+$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnPreviewSel, $btnBuild, $btnAvatar, $btnCv, $btnSettings, $btnMenu, $status))
 Refresh-List
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form.ShowDialog() | Out-Null

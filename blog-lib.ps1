@@ -534,6 +534,45 @@ function Get-ThemeProfile {
     return @{ Author = $author; Bio = $bio }
 }
 
+# ---------- 读取主题导航菜单（themes\Academia\_config.yml 的 menu: 块，按 YAML 顺序） ----------
+function Get-MenuOrder {
+    param([string]$Root)
+    $cfgPath = Join-Path $Root 'themes\Academia\_config.yml'
+    $lines = @(Get-Content -LiteralPath $cfgPath -Encoding UTF8)
+    $idx = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match '^\s*menu:\s*$') { $idx = $i; break }
+    }
+    if ($idx -lt 0) { throw '未找到 menu 配置（themes\Academia\_config.yml）' }
+    $items = @()
+    $j = $idx + 1
+    while ($j -lt $lines.Count -and $lines[$j] -match '^(\s{2,})([^:#][^:]*?)\s*:\s*(.*)$') {
+        $items += [pscustomobject]@{ Key = $Matches[2].Trim(); Value = $Matches[3].Trim(); Indent = $Matches[1]; Line = $j }
+        $j++
+    }
+    if ($items.Count -eq 0) { throw 'menu 配置中没有可调整的菜单项' }
+    return [pscustomobject]@{ Path = $cfgPath; Lines = $lines; Items = $items }
+}
+
+# ---------- 按新顺序写回主题导航菜单 ----------
+function Set-MenuOrder {
+    param([string]$Root, [string[]]$Order)
+    $cfg = Get-MenuOrder -Root $Root
+    if ($Order.Count -ne $cfg.Items.Count) { throw "菜单项数量不匹配（期望 $($cfg.Items.Count)，传入 $($Order.Count)）" }
+    $byKey = @{}
+    foreach ($it in $cfg.Items) { $byKey[$it.Key] = $it }
+    $slots = @($cfg.Items | ForEach-Object { $_.Line })   # 原槽位行号（按原顺序）
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($ln in $cfg.Lines) { $lines.Add($ln) }
+    for ($n = 0; $n -lt $Order.Count; $n++) {
+        $it = $byKey[$Order[$n]]
+        if (-not $it) { throw "菜单项不存在: $($Order[$n])" }
+        $lines[$slots[$n]] = "$($it.Indent)$($it.Key): $($it.Value)"
+    }
+    [System.IO.File]::WriteAllText($cfg.Path, ($lines -join "`n"), (New-Object System.Text.UTF8Encoding($false)))
+    return $cfg.Path
+}
+
 # ---------- Git 发布 ----------
 function Publish-Git {
     param([string]$Message, [string]$Root)
