@@ -251,29 +251,7 @@ function Add-WordPara {
     # 先剥离星号得到纯文本，再按标记在纯文本中的位置设置对应 range 的加粗/斜体
     $clean = New-Object System.Text.StringBuilder
     $marks = New-Object System.Collections.Generic.List[object]
-    $i = 0
-    while ($i -lt $Text.Length) {
-        $rest = $Text.Substring($i)
-        if ($rest -match '^\*\*\*(.+?)\*\*\*') {
-            $c = $Matches[1]
-            $marks.Add([pscustomobject]@{ Start = $clean.Length; Len = $c.Length; Bold = $true; Italic = $true })
-            [void]$clean.Append($c)
-            $i += 3 + $c.Length + 3
-        } elseif ($rest -match '^\*\*(.+?)\*\*') {
-            $c = $Matches[1]
-            $marks.Add([pscustomobject]@{ Start = $clean.Length; Len = $c.Length; Bold = $true; Italic = $false })
-            [void]$clean.Append($c)
-            $i += 2 + $c.Length + 2
-        } elseif ($rest -match '^\*([^*\s][^*]*?)\*') {
-            $c = $Matches[1]
-            $marks.Add([pscustomobject]@{ Start = $clean.Length; Len = $c.Length; Bold = $false; Italic = $true })
-            [void]$clean.Append($c)
-            $i += 1 + $c.Length + 1
-        } else {
-            [void]$clean.Append($Text[$i])
-            $i++
-        }
-    }
+    Parse-MdMarks $Text $false $false $clean $marks
     $plain = $clean.ToString()
     $Doc.Activate()
     $sel = $Word.Selection
@@ -294,6 +272,40 @@ function Add-WordPara {
     return $rBase
 }
 
+# 递归解析 markdown 加粗/斜体标记（支持嵌套，如 **粗 *斜* 粗**），
+# 结果写入 $Clean（纯文本）与 $Marks（{Start,Len,Bold,Italic} 格式段，相邻同格式已合并）
+function Parse-MdMarks {
+    param([string]$Text, [bool]$Bold, [bool]$Italic, [System.Text.StringBuilder]$Clean, [System.Collections.Generic.List[object]]$Marks)
+    $i = 0
+    while ($i -lt $Text.Length) {
+        $rest = $Text.Substring($i)
+        if ($rest -match '^\*\*\*(.+?)\*\*\*') {
+            $c = $Matches[1]
+            Parse-MdMarks $c $true $true $Clean $Marks
+            $i += 3 + $c.Length + 3
+        } elseif ($rest -match '^\*\*(.+?)\*\*') {
+            $c = $Matches[1]
+            Parse-MdMarks $c $true $Italic $Clean $Marks
+            $i += 2 + $c.Length + 2
+        } elseif ($rest -match '^\*([^*\s][^*]*?)\*') {
+            $c = $Matches[1]
+            Parse-MdMarks $c $Bold $true $Clean $Marks
+            $i += 1 + $c.Length + 1
+        } else {
+            $start = $Clean.Length
+            [void]$Clean.Append($Text[$i])
+            if ($Bold -or $Italic) {
+                if ($Marks.Count -gt 0 -and $Marks[$Marks.Count - 1].Bold -eq $Bold -and $Marks[$Marks.Count - 1].Italic -eq $Italic -and ($Marks[$Marks.Count - 1].Start + $Marks[$Marks.Count - 1].Len) -eq $start) {
+                    $Marks[$Marks.Count - 1].Len++
+                } else {
+                    $Marks.Add([pscustomobject]@{ Start = $start; Len = 1; Bold = $Bold; Italic = $Italic })
+                }
+            }
+            $i++
+        }
+    }
+}
+
 function Get-Marks {
     param([bool]$Bold, [bool]$Italic)
     if ($Bold -and $Italic) { return '***' }
@@ -302,59 +314,55 @@ function Get-Marks {
     return ''
 }
 
-# 按词读取段内加粗/斜体格式，还原为 markdown 标记；
-# 词间空格跟随格式：下一词同格式则空格留在标记内（**Shanghai University**），
-# 格式变化处/段尾的空格放在标记外（**bold** and）
+# 读取段内加粗/斜体格式，还原为 markdown 标记；
+# 逐字符读取格式（Range.Runs 在 COM 下不可用），合并相邻同格式为段，
+# 天然支持中文段内部分格式；段边界空格放到标记外（**bold** and），段内空格留在标记内（**Shanghai University**）
 function Get-MarkedText {
     param([object]$Range)
-    $items = New-Object System.Collections.Generic.List[object]
-    foreach ($w in $Range.Words) {
-        $wt = $w.Text
-        if ($wt -match '^\s') {
-            $items.Add([pscustomobject]@{ Space = $true; Text = $wt; Trail = ''; Bold = $false; Italic = $false })
-            continue
+    $runs = New-Object System.Collections.Generic.List[object]
+    foreach ($c in $Range.Characters) {
+        $t = $c.Text
+        if ($t -eq "`r" -or $t -eq "`n" -or $t -eq [char]7) { continue }
+        $runs.Add([pscustomobject]@{ Text = $t; Bold = ($c.Font.Bold -eq -1); Italic = ($c.Font.Italic -eq -1) })
+    }
+    $merged = New-Object System.Collections.Generic.List[object]
+    foreach ($r in $runs) {
+        if ($merged.Count -gt 0 -and $merged[$merged.Count - 1].Bold -eq $r.Bold -and $merged[$merged.Count - 1].Italic -eq $r.Italic) {
+            $merged[$merged.Count - 1].Text += $r.Text
+        } else {
+            $merged.Add([pscustomobject]@{ Text = $r.Text; Bold = $r.Bold; Italic = $r.Italic })
         }
-        $trail = ''
-        if ($wt -match '^(\S.*?)(\s+)$') { $wt = $Matches[1]; $trail = $Matches[2] }
-        $items.Add([pscustomobject]@{ Space = $false; Text = $wt; Trail = $trail; Bold = ($w.Font.Bold -eq -1); Italic = ($w.Font.Italic -eq -1) })
     }
     $sb = New-Object System.Text.StringBuilder
     $lastB = $null
     $lastI = $null
     $pending = ''
-    for ($i = 0; $i -lt $items.Count; $i++) {
-        $cur = $items[$i]
-        if ($cur.Space) {
-            if ($null -ne $lastB -and ($lastB -or $lastI)) { $pending += $cur.Text } else { [void]$sb.Append($cur.Text) }
-            continue
-        }
+    foreach ($cur in $merged) {
         $b = $cur.Bold
         $it = $cur.Italic
+        $text = $cur.Text
+        $lead = ''
+        $trail = ''
+        if ($text -match '^(\s+)') { $lead = $Matches[1]; $text = $text.Substring($lead.Length) }
+        if ($text -match '(\s+)$') { $trail = $Matches[1]; $text = $text.Substring(0, $text.Length - $trail.Length) }
+        if ($lead) { $pending += $lead }
         if ($b -ne $lastB -or $it -ne $lastI) {
             if ($null -ne $lastB) { [void]$sb.Append((Get-Marks $lastB $lastI)) }
             if ($pending) { [void]$sb.Append($pending); $pending = '' }
             $marks = Get-Marks $b $it
             if ($marks) {
                 $t = $sb.ToString()
-                if ($t.Length -gt 0 -and $t[$t.Length - 1] -match '[A-Za-z0-9]') { [void]$sb.Append(' ') }
+                if ($t.Length -gt 0) {
+                    $lc = $t[$t.Length - 1]
+                    if ($lc -eq '*' -or $lc -match '[A-Za-z0-9]') { [void]$sb.Append(' ') }
+                }
                 [void]$sb.Append($marks)
             }
             $lastB = $b
             $lastI = $it
         }
-        [void]$sb.Append($cur.Text)
-        if ($cur.Trail) {
-            $nextB = $null
-            $nextI = $null
-            for ($j = $i + 1; $j -lt $items.Count; $j++) {
-                if (-not $items[$j].Space) { $nextB = $items[$j].Bold; $nextI = $items[$j].Italic; break }
-            }
-            if ($null -eq $nextB -or $nextB -ne $b -or $nextI -ne $it) {
-                $pending += $cur.Trail
-            } else {
-                [void]$sb.Append($cur.Trail)
-            }
-        }
+        [void]$sb.Append($text)
+        if ($trail) { $pending += $trail }
     }
     if ($null -ne $lastB) { [void]$sb.Append((Get-Marks $lastB $lastI)) }
     if ($pending) { [void]$sb.Append($pending) }
