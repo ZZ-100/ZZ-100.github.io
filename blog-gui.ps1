@@ -132,7 +132,7 @@ function Open-PostInWord {
     $docx = Join-Path $editDir ($slug + '.docx')
     Convert-MdToWord -MdPath $MdPath -DocxPath $docx
     Start-Process $docx
-    $status.Text = "已在 Word 打开 [$slug]，编辑保存后点『从 Word 导入』选择同一文件可更新文章"
+    $status.Text = "已在 Word 打开 [$slug]，改完保存后回到本窗口，选中它再点『从 Word 导入』即可更新"
 }
 
 # --- 底部工具按钮（第一行） ---
@@ -218,19 +218,30 @@ $btnWordNew.Add_Click({
 })
 
 $btnImport.Add_Click({
-    $ofd = New-Object System.Windows.Forms.OpenFileDialog
-    $ofd.Filter = 'Word 文档 (*.docx;*.doc)|*.docx;*.doc'
-    $ofd.Title = '选择要导入的 Word 文档'
-if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+    # 优先使用选中项对应的 .word_edits\<名>.docx（双击打开的就是它），免去文件选择
+    $docxPath = $null
+    if ($list.SelectedItems.Count -gt 0) {
+        $selMd = $list.SelectedItems[0].Tag
+        if ($selMd -match 'source\\([^\\]+)\\index\.md$') { $slug = $Matches[1] } else { $slug = [System.IO.Path]::GetFileNameWithoutExtension($selMd) }
+        $cand = Join-Path $Root ('.word_edits\' + $slug + '.docx')
+        if (Test-Path -LiteralPath $cand) { $docxPath = $cand }
+    }
+    if (-not $docxPath) {
+        $ofd = New-Object System.Windows.Forms.OpenFileDialog
+        $ofd.Filter = 'Word 文档 (*.docx;*.doc)|*.docx;*.doc'
+        $ofd.Title = '选择要导入的 Word 文档'
+        if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+        $docxPath = $ofd.FileName
+    }
     $status.Text = '正在从 Word 导入，请稍候...'
     # 页面往返：docx 文件名匹配 source\<名>\index.md → 直接更新页面
-    $pageBase = [System.IO.Path]::GetFileNameWithoutExtension($ofd.FileName)
+    $pageBase = [System.IO.Path]::GetFileNameWithoutExtension($docxPath)
     $pageMd = Join-Path $Root "source\$pageBase\index.md"
     if (Test-Path -LiteralPath $pageMd) {
         $r = [System.Windows.Forms.MessageBox]::Show("更新页面 [$pageBase] 的内容吗？", '确认更新页面', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
         if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
         try {
-            Convert-WordToPageMd -DocxPath $ofd.FileName -PageMd $pageMd
+            Convert-WordToPageMd -DocxPath $docxPath -PageMd $pageMd
             $status.Text = "已更新页面: $pageBase"
             Refresh-List
             [System.Windows.Forms.MessageBox]::Show("页面 [$pageBase] 已更新，点『发布』即可上线。", '完成') | Out-Null
@@ -241,7 +252,7 @@ if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
         return
     }
 try {
-        $title = Get-WordTitle -DocxPath $ofd.FileName
+        $title = Get-WordTitle -DocxPath $docxPath
         $force = $false
         $safeTitle = $title -replace '[\\/:*?"<>|]', '_'
         if (Test-Path -LiteralPath (Join-Path $Root "source\_posts\$safeTitle.md")) {
@@ -249,7 +260,7 @@ try {
             if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
             $force = $true
         }
-        $file = New-PostFromWord -DocxPath $ofd.FileName -Title $title -Root $Root -Force:$force
+        $file = New-PostFromWord -DocxPath $docxPath -Title $title -Root $Root -Force:$force
         $txtTitle.Text = $title
         $status.Text = "导入成功: $title（排版已保留）"
         Refresh-List
