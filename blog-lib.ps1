@@ -250,10 +250,14 @@ function Convert-MdToWord {
         $null = $word.Selection   # 预初始化 Selection（Visible=false 时首次访问可能为 null）
         Apply-AcademicStyles -Word $word -Doc $doc
 
-        # 标题
-        $p = $doc.Paragraphs.Item(1)
-        $p.Range.Text = $title
-        $p.Style = -2
+        # 标题：独立页面（source\xxx\index.md）不写首段标题——页面标题由 front-matter title / 模板渲染，
+        # 若写进 Word 会让用户删除后重新生成又出现；仍写入文档属性 Title 以便 Get-WordTitle 识别
+        $isPage = $MdPath -match '\\index\.md$'
+        if (-not $isPage) {
+            $p = $doc.Paragraphs.Item(1)
+            $p.Range.Text = $title
+            $p.Style = -2
+        }
         try {
             $prop = $doc.BuiltInDocumentProperties.Item('Title')
             if ($prop) { $prop.Value = $title }
