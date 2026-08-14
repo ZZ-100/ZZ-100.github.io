@@ -19,3 +19,5 @@ PhD candidate in Economics. My research focuses on statistical analysis, applied
 
 - Email: gtzz001009@gmail.com
 - GitHub: [ZZ-100](https://github.com/ZZ-100)
+- Google Scholar: [个人主页](https://scholar.google.com/)
+- ORCID: [个人主页](https://orcid.org/)
