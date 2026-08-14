@@ -9,13 +9,15 @@ date: 2026-05-01 00:00:00
 
 ## Education
 
-- [（示例）教育经历待补充]
+- Shanghai University of Finance and Economics | Bachelor of Economics | Sep 2022-Jun 2026
+
+Renmin University of China | Master of Economics | Sep 2026-Jun 2029(Expected)
 
 ## Contact
 
-- Email: [gtzz001009@gmail.com](mailto:gtzz001009@gmail.com)
-- Email: [gtzz001009@gmail.com](mailto:gtzz001009@gmail.com)
+- Email-1: [zhang_zhen@ruc.edu.cn](mailto:zhang_zhen@ruc.edu.cn)
+- Email-2: [gtzz001009@gmail.com](mailto:gtzz001009@gmail.com)
 - GitHub: [ZZ-100](https://github.com/ZZ-100)
-- Google Scholar: [个人主页](https://scholar.google.com/)
-- ORCID: [个人主页](https://orcid.org/)
+- Google Scholar: [个人主页（暂无）](https://scholar.google.com/)
+- ORCID: [个人主页（暂无）](https://orcid.org/)
 

@@ -138,6 +138,7 @@ function Apply-AcademicStyles {
     $normal.Font.Color = 0x524E49
     $normal.ParagraphFormat.LineSpacingRule = 1
     $normal.ParagraphFormat.FirstLineIndent = 0
+    try { $normal.ParagraphFormat.CharacterUnitFirstLineIndent = 0 } catch { }
     $normal.ParagraphFormat.SpaceAfter = 6
 
     # Heading 1：主题 h1=30px(22.5pt)、加粗、左对齐
@@ -149,6 +150,7 @@ function Apply-AcademicStyles {
     $h1.Font.Color = 0x524E49
     $h1.ParagraphFormat.Alignment = 0
     $h1.ParagraphFormat.FirstLineIndent = 0
+    try { $h1.ParagraphFormat.CharacterUnitFirstLineIndent = 0 } catch { }
     $h1.ParagraphFormat.SpaceBefore = 0
     $h1.ParagraphFormat.SpaceAfter = 12
 
@@ -161,6 +163,7 @@ function Apply-AcademicStyles {
     $h2.Font.Color = 0x524E49
     $h2.ParagraphFormat.Alignment = 0
     $h2.ParagraphFormat.FirstLineIndent = 0
+    try { $h2.ParagraphFormat.CharacterUnitFirstLineIndent = 0 } catch { }
     $h2.ParagraphFormat.SpaceBefore = 12
     $h2.ParagraphFormat.SpaceAfter = 6
 
@@ -173,6 +176,7 @@ function Apply-AcademicStyles {
     $h3.Font.Color = 0x524E49
     $h3.ParagraphFormat.Alignment = 0
     $h3.ParagraphFormat.FirstLineIndent = 0
+    try { $h3.ParagraphFormat.CharacterUnitFirstLineIndent = 0 } catch { }
     $h3.ParagraphFormat.SpaceBefore = 12
     $h3.ParagraphFormat.SpaceAfter = 6
 
@@ -218,6 +222,29 @@ function New-WordDraft {
 # 在文档末尾追加一个段落（Selection 方式）
 # 注意：EndKey(6) 只把光标移到最后一个段落符之前（行尾），需先 TypeParagraph
 # 新建段落再输入；样式必须显式设置，否则新段落会继承前一段样式。
+# COM 无法可靠清除 Word 样式的字符单位首行缩进（PS 5.1 静默失败），保存后直接改 XML：
+# 删除 styles.xml 与 document.xml 中所有 w:ind 的 firstLine/firstLineChars 属性（首行缩进）
+function Clear-FirstLineIndentXml {
+    param([string]$DocxPath)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::Open($DocxPath, 'Update')
+    try {
+        foreach ($name in @('word/styles.xml', 'word/document.xml')) {
+            $entry = $zip.GetEntry($name)
+            if (-not $entry) { continue }
+            $sr = New-Object System.IO.StreamReader($entry.Open())
+            $xml = $sr.ReadToEnd(); $sr.Dispose()
+            $new = [regex]::Replace($xml, '\s*w:firstLineChars="[^"]*"|\s*w:firstLine="[^"]*"', '')
+            if ($new -ne $xml) {
+                $entry.Delete()
+                $ne = $zip.CreateEntry($name)
+                $sw = New-Object System.IO.StreamWriter($ne.Open())
+                $sw.Write($new); $sw.Dispose()
+            }
+        }
+    } finally { $zip.Dispose() }
+}
+
 function Add-WordPara {
     param([object]$Word, [object]$Doc, [string]$Text, [int]$Style)
     $Doc.Activate()
@@ -301,6 +328,7 @@ function Convert-MdToWord {
 
         $doc.SaveAs2($DocxPath, 12)
         $doc.Close($false)
+        Clear-FirstLineIndentXml -DocxPath $DocxPath
         return $true
     } finally {
         $word.Quit()
