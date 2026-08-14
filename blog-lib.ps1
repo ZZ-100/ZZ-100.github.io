@@ -160,6 +160,14 @@ function Apply-AcademicStyles {
     $h2.ParagraphFormat.FirstLineIndent = 0
     $h2.ParagraphFormat.SpaceBefore = 12
     $h2.ParagraphFormat.SpaceAfter = 6
+
+    # List Bullet：此 Word 的 -19 为带大缩进的列表样式（leftChars=1600），清零更紧凑
+    $bullet = $Doc.Styles.Item(-19)
+    try { $bullet.ParagraphFormat.CharacterUnitLeftIndent = 0 } catch { }
+    try { $bullet.ParagraphFormat.CharacterUnitFirstLineIndent = 0 } catch { }
+    $bullet.ParagraphFormat.LeftIndent = 0
+    $bullet.ParagraphFormat.FirstLineIndent = 0
+    $bullet.ParagraphFormat.SpaceAfter = 6
 }
 
 # ---------- 新建 Word 草稿（自动配置学术风格） ----------
