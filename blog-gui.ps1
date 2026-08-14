@@ -334,7 +334,8 @@ $btnAvatar.Add_Click({
     if ($ofd.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
     $status.Text = '正在处理头像...'
     try {
-        $imgDir = Join-Path $Root 'source\img'
+        # 直接写入主题头像源文件，避免与站点 source\img 同名冲突（那会被主题占位图覆盖）
+        $imgDir = Join-Path $Root 'themes\Academia\source\img'
         if (-not (Test-Path -LiteralPath $imgDir)) { New-Item -ItemType Directory -Path $imgDir | Out-Null }
         $dest = Join-Path $imgDir 'profile.png'
         $src = [System.Drawing.Image]::FromFile($ofd.FileName)
