@@ -58,7 +58,7 @@ $btnPublish.ForeColor = [System.Drawing.Color]::White
 
 # --- 文章列表 ---
 $lblList = New-Object System.Windows.Forms.Label
-$lblList.Text = '已有文章（双击=编辑源码，选中后点"预览选中"看网页效果）:'
+$lblList.Text = '文章与页面（双击=Word 编辑，选中后点"预览选中"看网页效果）:'
 $lblList.Location = New-Object System.Drawing.Point(12, 50)
 $lblList.AutoSize = $true
 
@@ -80,12 +80,27 @@ function Refresh-List {
         $item.Tag = $p.FullName
         $list.Items.Add($item) | Out-Null
     }
+    # 独立页面（source 下各目录的 index.md，如 about）
+    $pages = Get-ChildItem -LiteralPath (Join-Path $Root 'source') -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne '_posts' -and $_.Name -notlike '_*' }
+    foreach ($d in $pages) {
+        $pageFile = Join-Path $d.FullName 'index.md'
+        if (Test-Path -LiteralPath $pageFile) {
+            $item = New-Object System.Windows.Forms.ListViewItem($d.Name)
+            $item.SubItems.Add('(页面)') | Out-Null
+            $item.Tag = $pageFile
+            $list.Items.Add($item) | Out-Null
+        }
+    }
     if ($list.Items.Count -gt 0) { $list.Items[0].Selected = $true }
 }
 
 # ---------- 文章网页 URL 与本地服务器 ----------
 function Get-PostUrl {
     param([string]$FilePath)
+    # 独立页面：source\<dir>\index.md → /<dir>/
+    if ($FilePath -match 'source\\([^\\]+)\\index\.md$') {
+        return "http://localhost:4000/$($Matches[1])/"
+    }
     $raw = Get-Content -LiteralPath $FilePath -Raw -Encoding UTF8
     $date = ''
     if ($raw -match '(?m)^date:\s*(\d{4})-(\d{2})-(\d{2})') {
@@ -454,6 +469,7 @@ $form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport
 Refresh-List
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form.ShowDialog() | Out-Null
+
 
 
 
