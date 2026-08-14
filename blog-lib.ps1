@@ -6,24 +6,6 @@ function Get-BlogRoot {
     return Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 
-# ---------- Word 转 HTML（保留排版） ----------
-function Convert-WordToHtml {
-    param([string]$DocxPath, [string]$OutHtml)
-    $word = New-Object -ComObject Word.Application
-    try {
-        $word.Visible = $false
-        $word.DisplayAlerts = 0
-        $doc = $word.Documents.Open($DocxPath, $false, $true)
-        # wdFormatHTML = 8, 编码 65001 = UTF-8
-        $doc.SaveAs2($OutHtml, 8, $false, '', $false, '', $false, $false, $false, $false, $false, 65001)
-        $doc.Close($false)
-        return $true
-    } finally {
-        $word.Quit()
-        [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
-    }
-}
-
 # ---------- 读取 Word 文档标题 ----------
 function Get-WordTitle {
     param([string]$DocxPath)
@@ -48,7 +30,7 @@ function Get-WordTitle {
     }
 }
 
-# ---------- 从 Word 生成 markdown 文章（保留排版） ----------
+# ---------- 从 Word 生成 markdown 文章（干净 markdown 重建，与页面路径一致） ----------
 function New-PostFromWord {
     param([string]$DocxPath, [string]$Title, [string]$Root, [switch]$Force, [string]$TargetFile)
     $date = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
@@ -75,32 +57,26 @@ function New-PostFromWord {
         }
     }
 
-    $tmpHtml = Join-Path $env:TEMP ("hexo_import_" + [System.IO.Path]::GetRandomFileName() + ".htm")
-    Convert-WordToHtml -DocxPath $DocxPath -OutHtml $tmpHtml | Out-Null
+    # 干净 markdown 重建（与页面路径一致，不嵌入 Word HTML）
+    Convert-WordToPageMd -DocxPath $DocxPath -PageMd $file | Out-Null
 
-    # Word 保存的 HTML 实际是系统 ANSI 编码(GBK)，必须按 GBK 解码，否则中文乱码
-    $gbk = [System.Text.Encoding]::GetEncoding(936)
-    $html = $gbk.GetString([System.IO.File]::ReadAllBytes($tmpHtml))
-    # 提取 <style> 块（保存样式排版）
-    $styles = ''
-    if ($html -match '(?s)<style[^>]*>.*?</style>') { $styles = $Matches[0] }
-    # 提取 body 内容
-    $body = $html
-    if ($html -match '(?s)<body[^>]*>(.*)</body>') { $body = $Matches[1] }
-    # 清理 Word 的注释等干扰
-    $body = $body -replace '<!\[^>\]*?>', ''
-    Remove-Item -LiteralPath $tmpHtml -ErrorAction SilentlyContinue
-
-    $content = @"
----
-title: $Title
-date: $date
-academia: true
----
-
-$styles
-$body
-"@
+    # 确保 front-matter 完整：title/date/academia 齐全
+    $c = Get-Content -LiteralPath $file -Raw -Encoding UTF8
+    $fm = ''
+    $body = $c
+    if ($c -match '(?s)^---\r?\n(.*?)\r?\n---\r?\n?(.*)$') { $fm = $Matches[1]; $body = $Matches[2] }
+    $nl = New-Object System.Collections.Generic.List[string]
+    $hasTitle = $hasDate = $hasAcad = $false
+    foreach ($ln in ($fm -split "`r?`n")) {
+        if ($ln -match '(?i)^title:') { $hasTitle = $true }
+        elseif ($ln -match '(?i)^date:') { $hasDate = $true }
+        elseif ($ln -match '(?i)^academia:') { $hasAcad = $true }
+        $nl.Add($ln)
+    }
+    if (-not $hasTitle) { $nl.Add("title: $Title") }
+    if (-not $hasDate) { $nl.Add("date: $date") }
+    if (-not $hasAcad) { $nl.Add("academia: true") }
+    $content = "---`n" + ($nl -join "`n") + "`n---`n`n" + $body.TrimStart("`r", "`n")
     Set-Content -LiteralPath $file -Value $content -Encoding UTF8
     return $file
 }
@@ -457,6 +433,10 @@ function Convert-WordToPageMd {
         $styleBullet = $doc.Styles.Item(-19).NameLocal
 
         $lines = New-Object System.Collections.Generic.List[string]
+        $fmTitle = ''
+        if ($fm -match '(?m)^title:\s*(.+)$') { $fmTitle = $Matches[1].Trim() }
+        # 仅当第一个 H1 文本与 front-matter title 相同（标题重复）时跳过它；
+        # 若正文 H1 与标题不同（如 # Zhen Zhang + title: Home）则保留
         $skipTitle = $true
         foreach ($p in $doc.Paragraphs) {
             $name = $p.Style.NameLocal
@@ -465,7 +445,10 @@ function Convert-WordToPageMd {
                 $text = ($p.Range.Text -replace '[\r\n\x07]', '').Trim()
                 if (-not $text) { continue }
                 if ($name -eq $styleH1) {
-                    if ($skipTitle) { $skipTitle = $false; continue }
+                    if ($skipTitle) {
+                        $skipTitle = $false
+                        if ($text -eq $fmTitle) { continue }
+                    }
                     $lines.Add("# $text")
                 } else {
                     $lines.Add("## $text")
