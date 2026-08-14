@@ -327,8 +327,28 @@ $btnDelete.Add_Click({
 })
 
 $btnPreview.Add_Click({
-    Start-Process powershell -ArgumentList '-NoExit', '-Command', "cd $Root; npm.cmd run server"
-    $status.Text = '预览窗口已打开 (http://localhost:4000)'
+    $tcp = New-Object System.Net.Sockets.TcpClient
+    $alive = $false
+    try { $tcp.Connect('127.0.0.1', 4000); $alive = $true } catch { }
+    $tcp.Close()
+    if (-not $alive) {
+        $status.Text = '正在启动本地预览服务器...'
+        Start-Process powershell -ArgumentList '-NoExit', '-Command', "cd $Root; npm.cmd run server"
+        for ($i = 0; $i -lt 24; $i++) {
+            Start-Sleep -Milliseconds 500
+            $tcp = New-Object System.Net.Sockets.TcpClient
+            try { $tcp.Connect('127.0.0.1', 4000); $alive = $true } catch { $alive = $false }
+            $tcp.Close()
+            if ($alive) { break }
+        }
+    }
+    if (-not $alive) {
+        $status.Text = '预览服务器启动超时，请查看预览窗口输出'
+        [System.Windows.Forms.MessageBox]::Show('服务器启动超时，请查看新开的预览窗口里的报错。', '提示') | Out-Null
+    } else {
+        Start-Process 'http://localhost:4000'
+        $status.Text = '预览已打开 (http://localhost:4000)'
+    }
 })
 
 $btnPreviewSel.Add_Click({
@@ -457,7 +477,7 @@ $btnSettings.Add_Click({
         $bio = $bio -replace "'", ''
         Set-ThemeProfile -Author $author -Bio $bio -Root $Root | Out-Null
         $status.Text = '设置已保存，发布后生效'
-        [System.Windows.Forms.MessageBox]::Show("设置已保存。`n若正在本地预览，请重启预览（关闭后重新点『本地预览』）查看效果。", '完成') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("设置已保存。`n本地预览若开着，请点『本地预览』按钮刷新浏览器查看最新效果；`n正式网页需点『发布』并等待约 1-2 分钟。", '完成') | Out-Null
     } catch {
         [System.Windows.Forms.MessageBox]::Show("保存失败: $($_.Exception.Message)", '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
     }
