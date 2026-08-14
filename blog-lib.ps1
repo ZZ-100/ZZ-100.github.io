@@ -247,15 +247,93 @@ function Clear-FirstLineIndentXml {
 
 function Add-WordPara {
     param([object]$Word, [object]$Doc, [string]$Text, [int]$Style)
+    # markdown 标记 → Word 格式：***粗斜*** / **粗** / *斜*；
+    # 先剥离星号得到纯文本，再按标记在纯文本中的位置设置对应 range 的加粗/斜体
+    $clean = New-Object System.Text.StringBuilder
+    $marks = New-Object System.Collections.Generic.List[object]
+    $i = 0
+    while ($i -lt $Text.Length) {
+        $rest = $Text.Substring($i)
+        if ($rest -match '^\*\*\*(.+?)\*\*\*') {
+            $c = $Matches[1]
+            $marks.Add([pscustomobject]@{ Start = $clean.Length; Len = $c.Length; Bold = $true; Italic = $true })
+            [void]$clean.Append($c)
+            $i += 3 + $c.Length + 3
+        } elseif ($rest -match '^\*\*(.+?)\*\*') {
+            $c = $Matches[1]
+            $marks.Add([pscustomobject]@{ Start = $clean.Length; Len = $c.Length; Bold = $true; Italic = $false })
+            [void]$clean.Append($c)
+            $i += 2 + $c.Length + 2
+        } elseif ($rest -match '^\*([^*\s][^*]*?)\*') {
+            $c = $Matches[1]
+            $marks.Add([pscustomobject]@{ Start = $clean.Length; Len = $c.Length; Bold = $false; Italic = $true })
+            [void]$clean.Append($c)
+            $i += 1 + $c.Length + 1
+        } else {
+            [void]$clean.Append($Text[$i])
+            $i++
+        }
+    }
+    $plain = $clean.ToString()
     $Doc.Activate()
     $sel = $Word.Selection
     if (-not $sel) { throw '无法获取 Word Selection' }
     $sel.EndKey(6)          # wdStory：光标移到文档末尾（最后一个段落行尾）
     $sel.TypeParagraph()    # 新建段落，光标落于新段落开头
-    $sel.TypeText($Text)
+    $sel.TypeText($plain)
     $p = $sel.Paragraphs.Item(1)
     $p.Style = $Style       # 显式设置样式（-1=Normal，避免继承前段样式）
-    return $p.Range
+    $rBase = $p.Range
+    foreach ($mk in $marks) {
+        $r = $rBase.Duplicate
+        $r.Start = $rBase.Start + $mk.Start
+        $r.End = $rBase.Start + $mk.Start + $mk.Len
+        if ($mk.Bold) { $r.Font.Bold = $true }
+        if ($mk.Italic) { $r.Font.Italic = $true }
+    }
+    return $rBase
+}
+
+function Get-Marks {
+    param([bool]$Bold, [bool]$Italic)
+    if ($Bold -and $Italic) { return '***' }
+    if ($Bold) { return '**' }
+    if ($Italic) { return '*' }
+    return ''
+}
+
+# 按词读取段内加粗/斜体格式，还原为 markdown 标记（空格一律放在标记外，保持原样）
+function Get-MarkedText {
+    param([object]$Range)
+    $sb = New-Object System.Text.StringBuilder
+    $lastB = $null
+    $lastI = $null
+    $pending = ''
+    foreach ($w in $Range.Words) {
+        $wt = $w.Text
+        $trail = ''
+        if ($wt -match '^\s') {
+            if ($null -ne $lastB -and ($lastB -or $lastI)) { $pending += $wt } else { [void]$sb.Append($wt) }
+            continue
+        }
+        if ($wt -match '^(\S.*?)(\s+)$') { $wt = $Matches[1]; $trail = $Matches[2] }
+        $b = ($w.Font.Bold -eq -1)
+        $i = ($w.Font.Italic -eq -1)
+        if ($b -ne $lastB -or $i -ne $lastI) {
+            if ($null -ne $lastB) { [void]$sb.Append((Get-Marks $lastB $lastI)) }
+            if ($pending) { [void]$sb.Append($pending); $pending = '' }
+            [void]$sb.Append((Get-Marks $b $i))
+            $lastB = $b
+            $lastI = $i
+        }
+        [void]$sb.Append($wt)
+        if ($trail) {
+            if ($lastB -or $lastI) { $pending += $trail } else { [void]$sb.Append($trail) }
+        }
+    }
+    if ($null -ne $lastB) { [void]$sb.Append((Get-Marks $lastB $lastI)) }
+    if ($pending) { [void]$sb.Append($pending) }
+    return $sb.ToString().Trim()
 }
 
 function Convert-MdToWord {
@@ -306,18 +384,8 @@ function Convert-MdToWord {
                 Add-WordPara -Word $word -Doc $doc -Text $Matches[1] -Style -19   # List Bullet
                 continue
             }
-            # 普通段落 + 加粗
-            $clean = $line -replace '\*\*(.+?)\*\*', '$1'
-            $r = Add-WordPara -Word $word -Doc $doc -Text $clean -Style -1
-            $offset = 0
-            foreach ($m in [regex]::Matches($line, '\*\*(.+?)\*\*')) {
-                $start = $r.Start + ($m.Index - $offset)
-                $r2 = $r.Duplicate
-                $r2.Start = $start
-                $r2.End = $start + $m.Groups[1].Length
-                $r2.Font.Bold = $true
-                $offset += 4
-            }
+            # 普通段落 + 加粗/斜体（Add-WordPara 解析 ** 与 * 标记）
+            Add-WordPara -Word $word -Doc $doc -Text $line -Style -1
         }
 
         # 页面模式不写标题时，Documents.Add 的初始空段会留在第一行 → 删除它
@@ -358,18 +426,20 @@ function Convert-WordToPageMd {
         $skipTitle = $true
         foreach ($p in $doc.Paragraphs) {
             $name = $p.Style.NameLocal
-            $text = ($p.Range.Text -replace '[\r\n\x07]', '').Trim()
-            if (-not $text) { continue }
-            $bold = ($p.Range.Bold -eq -1)
-            if ($name -eq $styleH1) {
-                if ($skipTitle) { $skipTitle = $false; continue }
-                $lines.Add("# $text")
-            } elseif ($name -eq $styleH2) {
-                $lines.Add("## $text")
-            } elseif ($name -eq $styleBullet) {
-                if ($bold) { $lines.Add("- **$text**") } else { $lines.Add("- $text") }
+            if ($name -eq $styleH1 -or $name -eq $styleH2) {
+                # 标题整段加粗是样式属性，不还原 ** 标记
+                $text = ($p.Range.Text -replace '[\r\n\x07]', '').Trim()
+                if (-not $text) { continue }
+                if ($name -eq $styleH1) {
+                    if ($skipTitle) { $skipTitle = $false; continue }
+                    $lines.Add("# $text")
+                } else {
+                    $lines.Add("## $text")
+                }
             } else {
-                if ($bold) { $lines.Add("**$text**") } else { $lines.Add($text) }
+                $text = Get-MarkedText -Range $p.Range
+                if (-not $text) { continue }
+                if ($name -eq $styleBullet) { $lines.Add("- $text") } else { $lines.Add($text) }
             }
         }
         $doc.Close($false)
