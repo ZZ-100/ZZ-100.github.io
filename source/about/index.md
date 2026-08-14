@@ -5,12 +5,11 @@ date: 2026-05-01 00:00:00
 
 ## Research Interests
 
-- [（示例）研究兴趣待补充]
+- Game Theory; Political Economy; Evolutionary Economics
 
 ## Education
 
 - **Shanghai University of Finance and Economics** | Bachelor of Economics | Sep 2022-Jun 2026
-
 - **Renmin University of China** | Master of Economics | Sep 2026-Jun 2029 *(Expected)*
 
 ## Contact
