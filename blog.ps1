@@ -1,123 +1,182 @@
 ﻿<#
-  blog.ps1 - 学术主页管理工具（Hexo + GitHub Actions）
+  blog.ps1 - 学术主页管理工具（交互式界面）
 
-  用法:
-    .\blog.ps1 new "标题"       新建主页文章（自动带 academia: true 并打开编辑器）
-    .\blog.ps1 page "标题"      新建独立页面
-    .\blog.ps1 edit "标题"      打开已有文章编辑
-    .\blog.ps1 serve            本地预览 (http://localhost:4000)
-    .\blog.ps1 build            本地构建
-    .\blog.ps1 publish "说明"   提交并推送（GitHub Actions 会自动部署）
-    .\blog.ps1 help             显示帮助
+  直接运行进入交互式菜单：
+    powershell -ExecutionPolicy Bypass -File .\blog.ps1
 
-  提示:
-    - 系统可能禁止直接运行 .ps1，请用:
-        powershell -ExecutionPolicy Bypass -File .\blog.ps1 new "标题"
+  也支持命令行参数（用法见脚本头部说明）。
 #>
-
 param()
+
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
-$node = 'C:\Program Files\nodejs\node.exe'
 
-function Show-Help {
-    Get-Content -LiteralPath $MyInvocation.MyCommand.Path -TotalCount 1 -ErrorAction SilentlyContinue | Out-Null
-    Get-Content -LiteralPath ($MyInvocation.MyCommand.Path) -ErrorAction SilentlyContinue |
-        Select-String -Pattern '^  \\\\.\\\\blog' | ForEach-Object { $_.Line }
-}
-
-function New-Article {
-    param([string]$Title)
-    if (-not $Title) { Write-Host '请提供标题: .\blog.ps1 new "标题"' -ForegroundColor Yellow; return }
+function New-Article-Interactive {
+    Write-Host ''
+    $title = Read-Host '请输入文章标题'
+    if (-not $title) { Write-Host '已取消' -ForegroundColor Yellow; return }
     $date = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $file = Join-Path $Root "source\_posts\$Title.md"
-    if (Test-Path -LiteralPath $file) { Write-Host "已存在: $file" -ForegroundColor Yellow; return }
+    $file = Join-Path $Root "source\_posts\$title.md"
+    if (Test-Path -LiteralPath $file) {
+        Write-Host "该文章已存在: $file" -ForegroundColor Red
+        Start-Sleep 1
+        return
+    }
     $content = @"
 ---
-title: $Title
+title: $title
 date: $date
 academia: true
 ---
 
-# $Title
+# $title
 "@
     Set-Content -LiteralPath $file -Value $content -Encoding UTF8
     Write-Host "已创建文章: $file" -ForegroundColor Green
+    Write-Host '正在打开编辑器，填完保存关闭即可。' -ForegroundColor Cyan
     Start-Process notepad $file
+    Write-Host '按回车返回菜单...' -ForegroundColor Gray
+    Read-Host | Out-Null
 }
 
-function New-Page {
-    param([string]$Title)
-    if (-not $Title) { Write-Host '请提供标题: .\blog.ps1 page "标题"' -ForegroundColor Yellow; return }
-    $dir = Join-Path $Root "source\$Title"
+function New-Page-Interactive {
+    Write-Host ''
+    $title = Read-Host '请输入页面标题'
+    if (-not $title) { Write-Host '已取消' -ForegroundColor Yellow; return }
+    $dir = Join-Path $Root "source\$title"
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     $file = Join-Path $dir 'index.md'
-    if (Test-Path -LiteralPath $file) { Write-Host "已存在: $file" -ForegroundColor Yellow; return }
+    if (Test-Path -LiteralPath $file) {
+        Write-Host "该页面已存在: $file" -ForegroundColor Red
+        Start-Sleep 1
+        return
+    }
     $content = @"
 ---
-title: $Title
+title: $title
 date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 ---
 
-# $Title
+# $title
 "@
     Set-Content -LiteralPath $file -Value $content -Encoding UTF8
     Write-Host "已创建页面: $file" -ForegroundColor Green
+    Write-Host '正在打开编辑器...' -ForegroundColor Cyan
     Start-Process notepad $file
+    Write-Host '按回车返回菜单...' -ForegroundColor Gray
+    Read-Host | Out-Null
 }
 
-function Edit-Article {
-    param([string]$Title)
-    if (-not $Title) { Write-Host '请提供标题: .\blog.ps1 edit "标题"' -ForegroundColor Yellow; return }
-    $file = Join-Path $Root "source\_posts\$Title.md"
-    if (-not (Test-Path -LiteralPath $file)) { Write-Host "找不到文章: $Title" -ForegroundColor Red; return }
-    Start-Process notepad $file
-}
-
-function Run-Npm {
-    param([string]$ScriptName)
-    Push-Location $Root
-    try {
-        npm.cmd run $ScriptName 2>&1
-    } finally {
-        Pop-Location
+function Edit-Article-Interactive {
+    $posts = Get-ChildItem -LiteralPath (Join-Path $Root 'source\_posts') -Filter '*.md' -ErrorAction SilentlyContinue
+    if (-not $posts) {
+        Write-Host '还没有任何文章。' -ForegroundColor Yellow
+        Start-Sleep 1
+        return
+    }
+    Write-Host ''
+    Write-Host '已有文章：' -ForegroundColor Cyan
+    for ($i = 0; $i -lt $posts.Count; $i++) {
+        Write-Host ("  {0}. {1}" -f ($i + 1), $posts[$i].BaseName)
+    }
+    Write-Host ('  {0}. 返回' -f ($posts.Count + 1))
+    $choice = Read-Host '选择要编辑的编号'
+    $n = 0
+    if (-not [int]::TryParse($choice, [ref]$n)) { return }
+    if ($n -ge 1 -and $n -le $posts.Count) {
+        Write-Host '正在打开编辑器...' -ForegroundColor Cyan
+        Start-Process notepad $posts[$n - 1].FullName
+        Write-Host '按回车返回菜单...' -ForegroundColor Gray
+        Read-Host | Out-Null
     }
 }
 
 function Start-Preview {
-    Run-Npm 'server'
+    Write-Host '正在启动本地预览...' -ForegroundColor Cyan
+    Start-Process powershell -ArgumentList '-NoExit', '-Command', 'cd', $Root, ';', 'npm.cmd run server'
+    Write-Host '预览已在新窗口启动，地址 http://localhost:4000' -ForegroundColor Green
+    Write-Host '关闭该窗口即可停止预览。' -ForegroundColor Gray
+    Write-Host '按回车返回菜单...' -ForegroundColor Gray
+    Read-Host | Out-Null
 }
 
-function Build {
-    Run-Npm 'clean'
-    Run-Npm 'build'
+function Build-Local {
+    Write-Host '正在本地构建...' -ForegroundColor Cyan
+    Push-Location $Root
+    try {
+        npm.cmd run clean 2>&1 | Out-Null
+        npm.cmd run build 2>&1
+    } finally {
+        Pop-Location
+    }
+    Write-Host '构建完成（无报错即为正常）。' -ForegroundColor Green
+    Write-Host '按回车返回菜单...' -ForegroundColor Gray
+    Read-Host | Out-Null
 }
 
 function Publish {
-    param([string]$Message)
-    if (-not $Message) { $Message = '更新内容' }
+    Write-Host ''
+    $msg = Read-Host '提交说明（回车使用默认"更新内容"）'
+    if (-not $msg) { $msg = '更新内容' }
     Push-Location $Root
     try {
         git add -A
         if (-not $?) { throw 'git add 失败' }
-        git commit -m $Message
+        git commit -m $msg
         if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1) { throw 'git commit 失败' }
         git push origin main
         if (-not $?) { throw 'git push 失败' }
         Write-Host '已推送，GitHub Actions 正在自动部署，1-2 分钟生效。' -ForegroundColor Green
+    } catch {
+        Write-Host "发布失败: $_" -ForegroundColor Red
     } finally {
         Pop-Location
     }
+    Write-Host '按回车返回菜单...' -ForegroundColor Gray
+    Read-Host | Out-Null
 }
 
-$cmd = $args[0]
-switch ($cmd) {
-    'new'     { New-Article $args[1] }
-    'page'    { New-Page $args[1] }
-    'edit'    { Edit-Article $args[1] }
-    'serve'   { Start-Preview }
-    'build'   { Build }
-    'publish' { Publish $args[1] }
-    'help'    { Show-Help }
-    default   { Show-Help }
+function Show-Menu {
+    Clear-Host
+    Write-Host '====================================' -ForegroundColor Cyan
+    Write-Host '   学术主页管理工具' -ForegroundColor White
+    Write-Host '====================================' -ForegroundColor Cyan
+    Write-Host ''
+    Write-Host '  1. 新建主页文章' -ForegroundColor Green
+    Write-Host '  2. 新建独立页面' -ForegroundColor Green
+    Write-Host '  3. 编辑已有文章' -ForegroundColor Green
+    Write-Host '  4. 本地预览' -ForegroundColor Green
+    Write-Host '  5. 本地构建' -ForegroundColor Green
+    Write-Host '  6. 提交并发布' -ForegroundColor Green
+    Write-Host '  0. 退出' -ForegroundColor Red
+    Write-Host ''
 }
+
+function Run-Interactive {
+    while ($true) {
+        Show-Menu
+        $choice = Read-Host '请选择'
+        switch ($choice) {
+            '1' { New-Article-Interactive }
+            '2' { New-Page-Interactive }
+            '3' { Edit-Article-Interactive }
+            '4' { Start-Preview }
+            '5' { Build-Local }
+            '6' { Publish }
+            '0' { Write-Host '再见！' -ForegroundColor Cyan; return }
+            default { Write-Host '无效选项，请重试。' -ForegroundColor Yellow; Start-Sleep 1 }
+        }
+    }
+}
+
+# 命令行兼容
+if ($args.Count -gt 0) {
+    switch ($args[0]) {
+        'new'     { $date = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'; $file = Join-Path $Root "source\_posts\$($args[1]).md"; if (-not $args[1]) { Write-Host '用法: .\blog.ps1 new "标题"'; return } Set-Content -LiteralPath $file -Value "---`ntitle: $($args[1])`ndate: $date`nacademia: true`n---`n`n# $($args[1])`n" -Encoding UTF8; Write-Host "已创建: $file" -ForegroundColor Green; Start-Process notepad $file }
+        'publish' { Publish }
+        default   { Run-Interactive }
+    }
+    return
+}
+
+Run-Interactive
