@@ -7,18 +7,18 @@
             p.author-bio= theme.author_bio
         .author-links
             button.btn.m-social-links Links
-            if(theme.contact_items)
+            if(contact_items().length)
                 ul.social-icons
-                    each value, name in theme.contact_items
+                    each item in contact_items()
                         li
-                            a.social-icon(href=url_for(trim(value.split('||')[0])) target="_blank" title=name)
-                                i(class=trim(value.split('||')[1]) aria-hidden="true")
+                            a.social-icon(href=url_for(item.url) target="_blank" title=item.name)
+                                i(class=item.icon aria-hidden="true")
                 ul.social-links
-                    each value, name in theme.contact_items
+                    each item in contact_items()
                         li
-                            a.e-social-link(href=url_for(trim(value.split('||')[0])) target="_blank")
-                                i(class=trim(value.split('||')[1]) aria-hidden="true")
-                                span= name
+                            a.e-social-link(href=url_for(item.url) target="_blank")
+                                i(class=item.icon aria-hidden="true")
+                                span= item.name
         if(theme.cv_dl.enable)
             a.cv-links(href=url_for(theme.cv_dl.dir) target="_blank")
                 i(class="fas fa-file-pdf" aria-hidden="true")

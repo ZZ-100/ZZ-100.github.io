@@ -1,6 +1,5 @@
 ---
 title: About
-layout: about
 date: 2026-05-01 00:00:00
 ---
 
@@ -15,3 +14,10 @@ PhD candidate in Economics. My research focuses on statistical analysis, applied
 ## Education
 
 - [�������������]
+
+## Contact
+
+- Email: [gtzz001009@gmail.com](mailto:gtzz001009@gmail.com)
+- GitHub: [ZZ-100](https://github.com/ZZ-100)
+- Google Scholar: [个人主页](https://scholar.google.com/)
+- ORCID: [个人主页](https://orcid.org/)

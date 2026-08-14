@@ -19,13 +19,9 @@ loading_bg:
 
 # Social Links; 社交链接，不需要的链接直接注释掉
 # 可以调整显示顺序
-# 图标调用 font-awesome 4.7
-# name: url || icon_name || 显示地址（可选，不填则自动从链接提取）
-contact_items:
-  Email: mailto:gtzz001009@gmail.com || fas fa-envelope || gtzz001009@gmail.com
-  GitHub: https://github.com/ZZ-100 || fab fa-github || ZZ-100
-  Google Scholar: https://scholar.google.com/ || fas fa-graduation-cap || scholar.google.com
-  ORCID: https://orcid.org/ || fab fa-orcid || orcid.org
+# 联系方式请编辑 source/about/index.md 的 Contact 部分，
+# 侧边栏 Links 图标会从那里自动同步。
+# 格式：- 名称: [显示文字](链接)，常见名称自动匹配图标（Email/GitHub/Scholar/ORCID/LinkedIn...）
 
 # CV download link
 cv_dl:
