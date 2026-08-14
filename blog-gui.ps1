@@ -83,6 +83,30 @@ function Refresh-List {
     if ($list.Items.Count -gt 0) { $list.Items[0].Selected = $true }
 }
 
+# ---------- 文章网页 URL 与本地服务器 ----------
+function Get-PostUrl {
+    param([string]$FilePath)
+    $raw = Get-Content -LiteralPath $FilePath -Raw -Encoding UTF8
+    $date = ''
+    if ($raw -match '(?m)^date:\s*(\d{4})-(\d{2})-(\d{2})') {
+        $date = "$($Matches[1])/$($Matches[2])/$($Matches[3])"
+    }
+    $slug = [System.Uri]::EscapeDataString([System.IO.Path]::GetFileNameWithoutExtension($FilePath))
+    return "http://localhost:4000/$date/$slug/"
+}
+
+function Start-HexoServer {
+    $listening = Get-NetTCPConnection -LocalPort 4000 -State Listen -ErrorAction SilentlyContinue
+    if (-not $listening) {
+        Start-Process powershell -WindowStyle Minimized -ArgumentList '-NoExit', '-Command', "cd $Root; npm.cmd run server"
+        for ($i = 0; $i -lt 20; $i++) {
+            Start-Sleep -Milliseconds 1000
+            $listening = Get-NetTCPConnection -LocalPort 4000 -State Listen -ErrorAction SilentlyContinue
+            if ($listening) { break }
+        }
+    }
+}
+
 # --- 底部工具按钮 ---
 $btnEdit = New-Object System.Windows.Forms.Button
 $btnEdit.Text = '编辑选中'
@@ -99,9 +123,14 @@ $btnPreview.Text = '本地预览'
 $btnPreview.Location = New-Object System.Drawing.Point(210, 445)
 $btnPreview.Size = New-Object System.Drawing.Size(90, 27)
 
+$btnPreviewSel = New-Object System.Windows.Forms.Button
+$btnPreviewSel.Text = '预览选中'
+$btnPreviewSel.Location = New-Object System.Drawing.Point(310, 445)
+$btnPreviewSel.Size = New-Object System.Drawing.Size(90, 27)
+
 $btnBuild = New-Object System.Windows.Forms.Button
 $btnBuild.Text = '构建检查'
-$btnBuild.Location = New-Object System.Drawing.Point(310, 445)
+$btnBuild.Location = New-Object System.Drawing.Point(410, 445)
 $btnBuild.Size = New-Object System.Drawing.Size(90, 27)
 
 # --- 状态栏 ---
@@ -190,6 +219,18 @@ $btnPreview.Add_Click({
     $status.Text = '预览窗口已打开 (http://localhost:4000)'
 })
 
+$btnPreviewSel.Add_Click({
+    if (-not $list.SelectedItems.Count) {
+        [System.Windows.Forms.MessageBox]::Show('请先在列表中选择一篇文章', '提示') | Out-Null
+        return
+    }
+    $url = Get-PostUrl -FilePath $list.SelectedItems[0].Tag
+    $status.Text = "正在打开: $url"
+    Start-HexoServer
+    Start-Process $url
+    $status.Text = '已打开浏览器预览该文章'
+})
+
 $btnBuild.Add_Click({
     $status.Text = '正在构建...'
     & npm.cmd run clean 2>&1 | Out-Null
@@ -252,9 +293,10 @@ $btnPublish.Add_Click({
 })
 
 # ---------- 组装 ----------
-$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnBuild, $status))
+$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnPreviewSel, $btnBuild, $status))
 Refresh-List
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form.ShowDialog() | Out-Null
+
 
 
