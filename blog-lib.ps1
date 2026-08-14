@@ -186,6 +186,17 @@ function New-WordDraft {
 }
 
 # ---------- 将 md 文章转换为带样式的 Word 文档 ----------
+# 在文档末尾追加一个段落（Range 方式，避免 Paragraphs.Add 覆盖问题）
+function Add-WordPara {
+    param([object]$Doc, [string]$Text, [int]$Style)
+    $r = $Doc.Range($Doc.Content.End - 1, $Doc.Content.End - 1)
+    $r.Text = $Text
+    $r.InsertParagraphAfter()
+    $p = $r.Paragraphs.Item(1)
+    if ($Style -ne -1) { $p.Style = $Style }
+    return $r
+}
+
 function Convert-MdToWord {
     param([string]$MdPath, [string]$DocxPath)
     $raw = Get-Content -LiteralPath $MdPath -Raw -Encoding UTF8
@@ -216,33 +227,26 @@ function Convert-MdToWord {
         # 正文逐行转换（# 标题 / **加粗** / - 列表 / 段落）
         foreach ($line in ($body -split "`r?`n")) {
             $trimmed = $line.Trim()
-            if (-not $trimmed) { [void]$doc.Paragraphs.Add(); continue }
+            if (-not $trimmed) { continue }
             if ($trimmed -match '^#{2,6}\s+(.*)') {
-                $p = $doc.Paragraphs.Add()
-                $p.Range.Text = $Matches[1]
-                $p.Style = -3
+                Add-WordPara -Doc $doc -Text $Matches[1] -Style -3
                 continue
             }
             if ($trimmed -match '^#\s+(.*)') {
-                $p = $doc.Paragraphs.Add()
-                $p.Range.Text = $Matches[1]
-                $p.Style = -2
+                Add-WordPara -Doc $doc -Text $Matches[1] -Style -2
                 continue
             }
             if ($trimmed -match '^[-*]\s+(.*)') {
-                $p = $doc.Paragraphs.Add()
-                $p.Range.Text = $Matches[1]
-                $p.Style = -19   # List Bullet
+                Add-WordPara -Doc $doc -Text $Matches[1] -Style -19   # List Bullet
                 continue
             }
             # 普通段落 + 加粗
             $clean = $line -replace '\*\*(.+?)\*\*', '$1'
-            $p = $doc.Paragraphs.Add()
-            $p.Range.Text = $clean
+            $r = Add-WordPara -Doc $doc -Text $clean -Style -1
             $offset = 0
             foreach ($m in [regex]::Matches($line, '\*\*(.+?)\*\*')) {
-                $start = $p.Range.Start + ($m.Index - $offset)
-                $r2 = $p.Range.Duplicate
+                $start = $r.Start + ($m.Index - $offset)
+                $r2 = $r.Duplicate
                 $r2.Start = $start
                 $r2.End = $start + $m.Groups[1].Length
                 $r2.Font.Bold = $true
