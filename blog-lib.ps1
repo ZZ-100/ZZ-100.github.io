@@ -513,6 +513,7 @@ function Set-ThemeCV {
 }
 
 # ---------- 更新作者名与简介 ----------
+# 侧边栏姓名优先取站点 _config.yml 的 author，因此同步更新站点与主题两处
 function Set-ThemeProfile {
     param([string]$Author, [string]$Bio, [string]$Root)
     $cfg = Join-Path $Root 'themes\Academia\_config.yml'
@@ -520,6 +521,14 @@ function Set-ThemeProfile {
     $text = $text -replace "(?m)^author:\s*'[^']*'", "author: '$Author'"
     $text = $text -replace "(?m)^author_bio:\s*'[^']*'", "author_bio: '$Bio'"
     [System.IO.File]::WriteAllText($cfg, $text, (New-Object System.Text.UTF8Encoding($false)))
+    $site = Join-Path $Root '_config.yml'
+    $stext = [System.IO.File]::ReadAllText($site, [System.Text.Encoding]::UTF8)
+    if ($stext -match "(?m)^author:") {
+        $stext = $stext -replace "(?m)^author:.*$", "author: $Author"
+    } else {
+        $stext = $stext + "`nauthor: $Author`n"
+    }
+    [System.IO.File]::WriteAllText($site, $stext, (New-Object System.Text.UTF8Encoding($false)))
 }
 
 # ---------- 读取作者名与简介 ----------
