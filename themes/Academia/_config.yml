@@ -20,12 +20,12 @@ loading_bg:
 # Social Links; 社交链接，不需要的链接直接注释掉
 # 可以调整显示顺序
 # 图标调用 font-awesome 4.7
-# name: url || icon_name
+# name: url || icon_name || 显示地址（可选，不填则自动从链接提取）
 contact_items:
-  Email: mailto:gtzz001009@gmail.com || fas fa-envelope
-  GitHub: https://github.com/ZZ-100 || fab fa-github
-  Google Scholar: https://scholar.google.com/ || fas fa-graduation-cap
-  ORCID: https://orcid.org/ || fab fa-orcid
+  Email: mailto:gtzz001009@gmail.com || fas fa-envelope || gtzz001009@gmail.com
+  GitHub: https://github.com/ZZ-100 || fab fa-github || ZZ-100
+  Google Scholar: https://scholar.google.com/ || fas fa-graduation-cap || scholar.google.com
+  ORCID: https://orcid.org/ || fab fa-orcid || orcid.org
 
 # CV download link
 cv_dl:
