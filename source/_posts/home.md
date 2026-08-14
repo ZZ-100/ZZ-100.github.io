@@ -6,8 +6,10 @@ academia: true
 
 # Zhen Zhang
 
-PhD candidate in Economics. My research focuses on statistical analysis, applied economics and data science.
+Master’s Student in Economics.
 
 ## Publications
 
 - [待补充论文列表]
+
+
