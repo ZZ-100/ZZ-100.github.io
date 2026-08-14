@@ -50,10 +50,14 @@ function Get-WordTitle {
 
 # ---------- 从 Word 生成 markdown 文章（保留排版） ----------
 function New-PostFromWord {
-    param([string]$DocxPath, [string]$Title, [string]$Root, [switch]$Force)
+    param([string]$DocxPath, [string]$Title, [string]$Root, [switch]$Force, [string]$TargetFile)
     $date = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     $safeTitle = $Title -replace '[\\/:*?"<>|]', '_'
-    $file = Join-Path $Root "source\_posts\$safeTitle.md"
+    if ($TargetFile) {
+        $file = $TargetFile
+    } else {
+        $file = Join-Path $Root "source\_posts\$safeTitle.md"
+    }
     if (Test-Path -LiteralPath $file) {
         if (-not $Force) {
             throw "文章已存在: $safeTitle"
@@ -65,8 +69,10 @@ function New-PostFromWord {
             if ($oldFm -match '(?m)^title:\s*(.+)$') { $Title = $Matches[1].Trim() }
             if ($oldFm -match '(?m)^date:\s*(.+)$') { $date = $Matches[1].Trim() }
         }
-        $safeTitle = $Title -replace '[\\/:*?"<>|]', '_'
-        $file = Join-Path $Root "source\_posts\$safeTitle.md"
+        if (-not $TargetFile) {
+            $safeTitle = $Title -replace '[\\/:*?"<>|]', '_'
+            $file = Join-Path $Root "source\_posts\$safeTitle.md"
+        }
     }
 
     $tmpHtml = Join-Path $env:TEMP ("hexo_import_" + [System.IO.Path]::GetRandomFileName() + ".htm")
@@ -326,6 +332,24 @@ function Convert-WordToPageMd {
         $word.Quit()
         [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
     }
+}
+
+# ---------- 检测 .word_edits 中比对应 md 新的 Word 文档（未导入的修改） ----------
+function Sync-WordEdits {
+    param([string]$Root)
+    $stale = @()
+    $editDir = Join-Path $Root '.word_edits'
+    if (-not (Test-Path -LiteralPath $editDir)) { return $stale }
+    foreach ($d in (Get-ChildItem -LiteralPath $editDir -Filter '*.docx' -ErrorAction SilentlyContinue)) {
+        $base = [System.IO.Path]::GetFileNameWithoutExtension($d.Name)
+        $pageMd = Join-Path $Root "source\$base\index.md"
+        $postMd = Join-Path $Root "source\_posts\$base.md"
+        if (Test-Path -LiteralPath $pageMd) { $target = $pageMd }
+        elseif (Test-Path -LiteralPath $postMd) { $target = $postMd }
+        else { continue }
+        if ($d.LastWriteTime -gt (Get-Item -LiteralPath $target).LastWriteTime) { $stale += $base }
+    }
+    return $stale
 }
 
 # ---------- 更换 CV（复制 PDF 并启用 CV 下载） ----------

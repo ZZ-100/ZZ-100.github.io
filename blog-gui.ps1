@@ -130,6 +130,20 @@ function Open-PostInWord {
     # 独立页面 source\<dir>\index.md → 用目录名作文件名（about.docx），避免歧义
     if ($MdPath -match 'source\\([^\\]+)\\index\.md$') { $slug = $Matches[1] } else { $slug = [System.IO.Path]::GetFileNameWithoutExtension($MdPath) }
     $docx = Join-Path $editDir ($slug + '.docx')
+    # 若 Word 已打开该文档的旧版本，重新生成后打开仍会复用旧窗口，导致误保存旧内容 → 提示先关闭
+    if (Get-Process WINWORD -ErrorAction SilentlyContinue) {
+        try {
+            $w = New-Object -ComObject Word.Application
+            $opened = @($w.Documents | Where-Object { $_.FullName -eq $docx })
+            if ($opened.Count -gt 0) {
+                $w.Quit()
+                [System.Windows.Forms.MessageBox]::Show("Word 中已打开 [$slug].docx 的旧版本。`n请先在 Word 中关闭该文档窗口，再重新双击编辑。", '请先关闭 Word 文档', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+                return
+            }
+            $w.Quit()
+        } catch { }
+    }
+    if (Test-Path -LiteralPath $docx) { Remove-Item -LiteralPath $docx }
     Convert-MdToWord -MdPath $MdPath -DocxPath $docx
     Start-Process $docx
     $status.Text = "已在 Word 打开 [$slug]，改完保存后回到本窗口，选中它再点『从 Word 导入』即可更新"
@@ -479,8 +493,31 @@ $btnPublish.Add_Click({
     $box.CancelButton = $cancel
     $box.ShowDialog() | Out-Null
 
-    if ($box.DialogResult -ne [System.Windows.Forms.DialogResult]::OK) { return }
+if ($box.DialogResult -ne [System.Windows.Forms.DialogResult]::OK) { return }
     $msg = $tb.Text.Trim()
+
+    # 检测 .word_edits 中未导入的 Word 修改，先导入再发布
+    $stale = @(Sync-WordEdits -Root $Root)
+    if ($stale.Count -gt 0) {
+        $names = ($stale | ForEach-Object { "$_.docx" }) -join '、'
+        $r = [System.Windows.Forms.MessageBox]::Show("检测到以下 Word 文档有尚未导入的修改：`n$names`n`n是否先导入再发布？", '检测到未导入修改', [System.Windows.Forms.MessageBoxButtons]::YesNoCancel, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($r -eq [System.Windows.Forms.DialogResult]::Cancel) { return }
+        if ($r -eq [System.Windows.Forms.DialogResult]::Yes) {
+            $status.Text = '正在导入 Word 修改...'
+            foreach ($base in $stale) {
+                $docx = Join-Path $Root ('.word_edits\' + $base + '.docx')
+                $pageMd = Join-Path $Root "source\$base\index.md"
+                $postMd = Join-Path $Root "source\_posts\$base.md"
+                if (Test-Path -LiteralPath $pageMd) {
+                    Convert-WordToPageMd -DocxPath $docx -PageMd $pageMd
+                } elseif (Test-Path -LiteralPath $postMd) {
+                    $title = Get-WordTitle -DocxPath $docx
+                    New-PostFromWord -DocxPath $docx -Title $title -Root $Root -Force -TargetFile $postMd | Out-Null
+                }
+            }
+            Refresh-List
+        }
+    }
 
     $status.Text = '正在发布...'
     try {
