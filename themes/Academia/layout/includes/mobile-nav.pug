@@ -1,8 +1,8 @@
 .nav-wrap
     .nav
-        button.site-nav
+        button.site-nav(type='button' aria-label='Open quick navigation' aria-expanded='false' aria-controls='quick-nav')
             .navicon
-        ul.nav_items
+        ul#quick-nav.nav_items
             each value, label in theme.menu
                 if !Array.isArray(value)
                     li.nav_item
@@ -10,5 +10,5 @@
                 else
                     li.nav_item
                         a.nav-page=' ' + trim(label.split('||')[0])
-    .cd-top
+    button.cd-top(type='button' aria-label='Back to top')
         i(class="fa fa-arrow-up" aria-hidden="true")

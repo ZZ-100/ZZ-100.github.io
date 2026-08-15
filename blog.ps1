@@ -10,28 +10,14 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $Root = $PSScriptRoot
+. (Join-Path $Root 'blog-lib.ps1')
 
 function New-Article-Interactive {
     Write-Host ''
     $title = Read-Host '请输入文章标题'
     if (-not $title) { Write-Host '已取消' -ForegroundColor Yellow; return }
-    $date = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $file = Join-Path $Root "source\_posts\$title.md"
-    if (Test-Path -LiteralPath $file) {
-        Write-Host "该文章已存在: $file" -ForegroundColor Red
-        Start-Sleep 1
-        return
-    }
-    $content = @"
----
-title: $title
-date: $date
-academia: true
----
-
-# $title
-"@
-    Set-Content -LiteralPath $file -Value $content -Encoding UTF8
+    try { $file = New-BlankPost -Title $title -Root $Root }
+    catch { Write-Host $_.Exception.Message -ForegroundColor Red; Start-Sleep 1; return }
     Write-Host "已创建文章: $file" -ForegroundColor Green
     Write-Host '正在打开编辑器，填完保存关闭即可。' -ForegroundColor Cyan
     Start-Process notepad $file
@@ -43,23 +29,8 @@ function New-Page-Interactive {
     Write-Host ''
     $title = Read-Host '请输入页面标题'
     if (-not $title) { Write-Host '已取消' -ForegroundColor Yellow; return }
-    $dir = Join-Path $Root "source\$title"
-    New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    $file = Join-Path $dir 'index.md'
-    if (Test-Path -LiteralPath $file) {
-        Write-Host "该页面已存在: $file" -ForegroundColor Red
-        Start-Sleep 1
-        return
-    }
-    $content = @"
----
-title: $title
-date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
----
-
-# $title
-"@
-    Set-Content -LiteralPath $file -Value $content -Encoding UTF8
+    try { $file = New-BlankPage -Title $title -Root $Root }
+    catch { Write-Host $_.Exception.Message -ForegroundColor Red; Start-Sleep 1; return }
     Write-Host "已创建页面: $file" -ForegroundColor Green
     Write-Host '正在打开编辑器...' -ForegroundColor Cyan
     Start-Process notepad $file
@@ -93,7 +64,7 @@ function Edit-Article-Interactive {
 
 function Start-Preview {
     Write-Host '正在启动本地预览...' -ForegroundColor Cyan
-    Start-Process powershell -ArgumentList '-NoExit', '-Command', 'cd', $Root, ';', 'npm.cmd run server'
+    Start-Process powershell -WorkingDirectory $Root -ArgumentList '-NoExit', '-Command', 'npm.cmd run server'
     Write-Host '预览已在新窗口启动，地址 http://localhost:4000' -ForegroundColor Green
     Write-Host '关闭该窗口即可停止预览。' -ForegroundColor Gray
     Write-Host '按回车返回菜单...' -ForegroundColor Gray
@@ -118,19 +89,12 @@ function Publish {
     Write-Host ''
     $msg = Read-Host '提交说明（回车使用默认"更新内容"）'
     if (-not $msg) { $msg = '更新内容' }
-    Push-Location $Root
     try {
-        git add -A
-        if (-not $?) { throw 'git add 失败' }
-        git commit -m $msg
-        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1) { throw 'git commit 失败' }
-        git push origin main
-        if (-not $?) { throw 'git push 失败' }
-        Write-Host '已推送，GitHub Actions 正在自动部署，1-2 分钟生效。' -ForegroundColor Green
+        $published = Publish-Git -Message $msg -Root $Root
+        if ($published) { Write-Host '已推送，构建与链接检查通过，GitHub Actions 正在自动部署。' -ForegroundColor Green }
+        else { Write-Host '没有需要发布的改动。' -ForegroundColor Yellow }
     } catch {
         Write-Host "发布失败: $_" -ForegroundColor Red
-    } finally {
-        Pop-Location
     }
     Write-Host '按回车返回菜单...' -ForegroundColor Gray
     Read-Host | Out-Null
@@ -172,7 +136,7 @@ function Run-Interactive {
 # 命令行兼容
 if ($args.Count -gt 0) {
     switch ($args[0]) {
-        'new'     { $date = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'; $file = Join-Path $Root "source\_posts\$($args[1]).md"; if (-not $args[1]) { Write-Host '用法: .\blog.ps1 new "标题"'; return } Set-Content -LiteralPath $file -Value "---`ntitle: $($args[1])`ndate: $date`nacademia: true`n---`n`n# $($args[1])`n" -Encoding UTF8; Write-Host "已创建: $file" -ForegroundColor Green; Start-Process notepad $file }
+        'new'     { if (-not $args[1]) { Write-Host '用法: .\blog.ps1 new "标题"'; return }; try { $file = New-BlankPost -Title $args[1] -Root $Root; Write-Host "已创建: $file" -ForegroundColor Green; Start-Process notepad $file } catch { Write-Host $_.Exception.Message -ForegroundColor Red } }
         'publish' { Publish }
         default   { Run-Interactive }
     }

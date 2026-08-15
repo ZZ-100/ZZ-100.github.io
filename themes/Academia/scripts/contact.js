@@ -37,6 +37,9 @@ var ICONS = {
 
 function iconFor(name) {
     var key = name.toLowerCase().trim()
+        .replace(/^personal\s+/, '')
+        .replace(/\s*\(.*?\)\s*$/, '')
+        .replace(/[-_ ]+\d+$/, '')
     if (ICONS[key]) return ICONS[key]
     if (/^mailto:/i.test(name)) return 'fas fa-envelope'
     return 'fas fa-link'

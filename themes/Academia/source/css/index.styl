@@ -6,15 +6,17 @@ $theme-blue = #1353d7;
 $theme-dark-blue = #096494;
 $theme-red = #c62641;
 
-*
-  -webkit-text-size-adjust: none;
+*,
+*::before,
+*::after
+  -webkit-text-size-adjust: 100%;
+  box-sizing: border-box;
 
 html
   height: 100%
   margin 0
   font-size: 62.5%;
   -webkit-font-smoothing: antialiased;
-  box-sizing: border-box;
 
 body
   height 100%
@@ -209,10 +211,6 @@ blockquote
   padding-right: 1.6rem;
   animation: intro 0.3s both;
   animation-delay: 0.35s;
-  &::after
-    clear: both;
-    content: "";
-    display: table;
 
 .page-title
   font-size 3rem
@@ -264,9 +262,15 @@ blockquote
     max-width: 1200px;
 
 @media (min-width: 34em)
+  #page_main
+    display: grid;
+    grid-template-columns: minmax(165px, 15.25424%) minmax(0, 1fr);
+    column-gap: 1.69492%;
+
   .page
-    width: 82.5%;
-    float: right;
+    width: auto;
+    min-width: 0;
+    float: none;
     margin-right: 0;
     if hexo-config('box_shadow') && hexo-config('box_shadow.enable')
       -webkit-box-shadow: 0 4px 8px 6px rgba(7,17,27,0.06);
@@ -451,11 +455,10 @@ blockquote
 
 @media (min-width: 34em)
   .side-card
-    width: 15.25424%;
-    min-width: 165px;
-    float: left;
-    margin-right: 1.69492%;
-    opacity: 0.75;
+    width: auto;
+    min-width: 0;
+    float: none;
+    opacity: 1;
     -webkit-transition: opacity 0.2s ease-in-out;
     transition: opacity 0.2s ease-in-out;
     if hexo-config('box_shadow') && hexo-config('box_shadow.enable')
@@ -600,6 +603,19 @@ blockquote
   border-color: initial;
   border-image: initial;
   outline: none;
+
+button:focus-visible,
+a:focus-visible
+  outline: 3px solid $theme-blue;
+  outline-offset: 3px;
+
+.cd-top
+  border: 0;
+
+.page article h1,
+.page article h2,
+.page article h3
+  scroll-margin-top: 2rem;
 
 .navicon
   position: relative;

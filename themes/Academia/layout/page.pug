@@ -1,7 +1,6 @@
 extends includes/layout
 
 block content
-    .page(itemscope itemtype='http://schema.org/CreativeWork')
-        if page.path !== 'about/index.html'
-            h2.page-title!= page.title
-        article!= page.content
+    .page(itemscope itemtype='https://schema.org/CreativeWork')
+        h1.page-title!= page.title
+        article(itemprop='articleBody')!= page.content

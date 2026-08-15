@@ -6,6 +6,83 @@ function Get-BlogRoot {
     return Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 
+function ConvertTo-YamlSingleQuoted {
+    param([string]$Value)
+    return "'" + (($Value -replace '[\r\n]', ' ') -replace "'", "''") + "'"
+}
+
+function Get-WordEditBaselinePath {
+    param([string]$DocxPath)
+    return "$DocxPath.sha256"
+}
+
+function Set-WordEditBaseline {
+    param([string]$DocxPath)
+    if (-not (Test-Path -LiteralPath $DocxPath)) { return }
+    $hash = (Get-FileHash -LiteralPath $DocxPath -Algorithm SHA256).Hash
+    [System.IO.File]::WriteAllText((Get-WordEditBaselinePath -DocxPath $DocxPath), $hash + "`n", (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Test-WordEditChanged {
+    param([string]$DocxPath)
+    if (-not (Test-Path -LiteralPath $DocxPath)) { return $false }
+    $baselinePath = Get-WordEditBaselinePath -DocxPath $DocxPath
+    if (-not (Test-Path -LiteralPath $baselinePath)) { return $true }
+    $baseline = (Get-Content -LiteralPath $baselinePath -Raw -Encoding UTF8).Trim()
+    $current = (Get-FileHash -LiteralPath $DocxPath -Algorithm SHA256).Hash
+    return $baseline -ne $current
+}
+
+function Move-ToRecycleBin {
+    param([string]$FilePath, [string]$Root)
+    if (-not (Test-Path -LiteralPath $FilePath)) { return $null }
+    $rootFull = ((Resolve-Path -LiteralPath $Root).Path).TrimEnd('\') + '\'
+    $fileFull = (Resolve-Path -LiteralPath $FilePath).Path
+    if (-not $fileFull.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "只能回收项目目录内的文件: $FilePath"
+    }
+    $relative = $fileFull.Substring($rootFull.Length)
+    $bin = Join-Path $Root ('.trash\' + (Get-Date -Format 'yyyyMMdd-HHmmssfff'))
+    $destination = Join-Path $bin $relative
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+    Move-Item -LiteralPath $FilePath -Destination $destination -Force
+    return $destination
+}
+
+function Invoke-HexoBuild {
+    param([string]$Root)
+    Push-Location $Root
+    try {
+        $cleanOutput = & npm.cmd run clean 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "清理失败:`n$($cleanOutput -join "`n")" }
+        $buildOutput = & npm.cmd run build 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "构建失败:`n$($buildOutput -join "`n")" }
+        return @($buildOutput)
+    } finally {
+        Pop-Location
+    }
+}
+
+function Test-PublicLinks {
+    param([string]$Root)
+    $public = Join-Path $Root 'public'
+    if (-not (Test-Path -LiteralPath $public)) { throw '构建目录 public 不存在' }
+    $broken = New-Object System.Collections.Generic.List[string]
+    foreach ($html in (Get-ChildItem -LiteralPath $public -Recurse -Filter '*.html' -File)) {
+        $content = Get-Content -LiteralPath $html.FullName -Raw -Encoding UTF8
+        foreach ($match in [regex]::Matches($content, '(?:href|src)=["''](/[^"''#?]*)["'']')) {
+            $ref = $match.Groups[1].Value
+            $target = Join-Path $public ($ref.TrimStart('/') -replace '/', '\')
+            if ($ref.EndsWith('/')) { $target = Join-Path $target 'index.html' }
+            if (-not (Test-Path -LiteralPath $target)) {
+                $broken.Add("$($html.FullName): $ref")
+            }
+        }
+    }
+    if ($broken.Count -gt 0) { throw "发现内部资源或链接不存在:`n$($broken -join "`n")" }
+    return $true
+}
+
 # ---------- 读取 Word 文档标题 ----------
 function Get-WordTitle {
     param([string]$DocxPath)
@@ -73,7 +150,7 @@ function New-PostFromWord {
         elseif ($ln -match '(?i)^academia:') { $hasAcad = $true }
         $nl.Add($ln)
     }
-    if (-not $hasTitle) { $nl.Add("title: $Title") }
+    if (-not $hasTitle) { $nl.Add("title: $(ConvertTo-YamlSingleQuoted -Value $Title)") }
     if (-not $hasDate) { $nl.Add("date: $date") }
     if (-not $hasAcad) { $nl.Add("academia: true") }
     $content = "---`n" + ($nl -join "`n") + "`n---`n`n" + $body.TrimStart("`r", "`n")
@@ -90,7 +167,23 @@ function New-BlankPost {
     if (Test-Path -LiteralPath $file) {
         throw "文章已存在: $safeTitle"
     }
-    Set-Content -LiteralPath $file -Value "---`ntitle: $Title`ndate: $date`nacademia: true`n---`n`n# $Title`n" -Encoding UTF8
+    $yamlTitle = ConvertTo-YamlSingleQuoted -Value $Title
+    Set-Content -LiteralPath $file -Value "---`ntitle: $yamlTitle`ndate: $date`nacademia: true`n---`n`n# $Title`n" -Encoding UTF8
+    return $file
+}
+
+# ---------- 新建独立页面 ----------
+function New-BlankPage {
+    param([string]$Title, [string]$Root)
+    $cleanTitle = ($Title -replace '[\r\n]', ' ').Trim()
+    $safeTitle = $cleanTitle -replace '[\\/:*?"<>|]', '_'
+    if (-not $safeTitle) { throw '页面标题不能为空' }
+    $dir = Join-Path $Root "source\$safeTitle"
+    $file = Join-Path $dir 'index.md'
+    if (Test-Path -LiteralPath $file) { throw "页面已存在: $safeTitle" }
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    $yamlTitle = ConvertTo-YamlSingleQuoted -Value $cleanTitle
+    Set-Content -LiteralPath $file -Value "---`ntitle: $yamlTitle`ndate: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n---`n" -Encoding UTF8
     return $file
 }
 
@@ -408,9 +501,11 @@ function Convert-MdToWord {
 # 首段 Heading1（页面标题）保留原 front-matter title 不覆盖。
 function Convert-WordToPageMd {
     param([string]$DocxPath, [string]$PageMd)
-    $old = Get-Content -LiteralPath $PageMd -Raw -Encoding UTF8
     $fm = ''
-    if ($old -match '(?s)^---\r?\n(.*?)\r?\n---') { $fm = $Matches[1].TrimEnd() }
+    if (Test-Path -LiteralPath $PageMd) {
+        $old = Get-Content -LiteralPath $PageMd -Raw -Encoding UTF8
+        if ($old -match '(?s)^---\r?\n(.*?)\r?\n---') { $fm = $Matches[1].TrimEnd() }
+    }
 
     $word = New-Object -ComObject Word.Application
     try {
@@ -489,7 +584,7 @@ function Sync-WordEdits {
         if (Test-Path -LiteralPath $pageMd) { $target = $pageMd }
         elseif (Test-Path -LiteralPath $postMd) { $target = $postMd }
         else { continue }
-        if ($d.LastWriteTime -gt (Get-Item -LiteralPath $target).LastWriteTime) { $stale += $base }
+        if (Test-WordEditChanged -DocxPath $d.FullName) { $stale += $base }
     }
     return $stale
 }
@@ -518,15 +613,17 @@ function Set-ThemeProfile {
     param([string]$Author, [string]$Bio, [string]$Root)
     $cfg = Join-Path $Root 'themes\Academia\_config.yml'
     $text = [System.IO.File]::ReadAllText($cfg, [System.Text.Encoding]::UTF8)
-    $text = $text -replace "(?m)^author:\s*'[^']*'", "author: '$Author'"
-    $text = $text -replace "(?m)^author_bio:\s*'[^']*'", "author_bio: '$Bio'"
+    $yamlAuthor = "'" + ($Author -replace "'", "''") + "'"
+    $yamlBio = "'" + ($Bio -replace "'", "''") + "'"
+    $text = $text -replace "(?m)^author:\s*.*$", "author: $yamlAuthor"
+    $text = $text -replace "(?m)^author_bio:\s*.*$", "author_bio: $yamlBio"
     [System.IO.File]::WriteAllText($cfg, $text, (New-Object System.Text.UTF8Encoding($false)))
     $site = Join-Path $Root '_config.yml'
     $stext = [System.IO.File]::ReadAllText($site, [System.Text.Encoding]::UTF8)
     if ($stext -match "(?m)^author:") {
-        $stext = $stext -replace "(?m)^author:.*$", "author: $Author"
+        $stext = $stext -replace "(?m)^author:.*$", "author: $yamlAuthor"
     } else {
-        $stext = $stext + "`nauthor: $Author`n"
+        $stext = $stext + "`nauthor: $yamlAuthor`n"
     }
     [System.IO.File]::WriteAllText($site, $stext, (New-Object System.Text.UTF8Encoding($false)))
 }
@@ -538,8 +635,8 @@ function Get-ThemeProfile {
     $text = [System.IO.File]::ReadAllText($cfg, [System.Text.Encoding]::UTF8)
     $author = ''
     $bio = ''
-    if ($text -match "(?m)^author:\s*'([^']*)'") { $author = $Matches[1] }
-    if ($text -match "(?m)^author_bio:\s*'([^']*)'") { $bio = $Matches[1] }
+    if ($text -match "(?m)^author:\s*'((?:''|[^'])*)'") { $author = $Matches[1] -replace "''", "'" }
+    if ($text -match "(?m)^author_bio:\s*'((?:''|[^'])*)'") { $bio = $Matches[1] -replace "''", "'" }
     return @{ Author = $author; Bio = $bio }
 }
 
@@ -556,11 +653,43 @@ function Get-MenuOrder {
     $items = @()
     $j = $idx + 1
     while ($j -lt $lines.Count -and $lines[$j] -match '^(\s{2,})([^:#][^:]*?)\s*:\s*(.*)$') {
-        $items += [pscustomobject]@{ Key = $Matches[2].Trim(); Value = $Matches[3].Trim(); Indent = $Matches[1]; Line = $j }
+        $key = $Matches[2].Trim()
+        if ($key -match "^'(.*)'$") { $key = $Matches[1] -replace "''", "'" }
+        $items += [pscustomobject]@{ Key = $key; Value = $Matches[3].Trim(); Indent = $Matches[1]; Line = $j }
         $j++
     }
     if ($items.Count -eq 0) { throw 'menu 配置中没有可调整的菜单项' }
     return [pscustomobject]@{ Path = $cfgPath; Lines = $lines; Items = $items }
+}
+
+# ---------- 将独立页面加入导航 ----------
+function Add-MenuItem {
+    param([string]$Root, [string]$Label, [string]$Url)
+    $cfg = Get-MenuOrder -Root $Root
+    if ($cfg.Items | Where-Object { $_.Key -eq $Label }) { throw "导航项已存在: $Label" }
+    $line = "  ${Label}: $Url"
+    if ($Label -notmatch '^[A-Za-z0-9 _-]+$') {
+        $quoted = "'" + ($Label -replace "'", "''") + "'"
+        $line = "  ${quoted}: $Url"
+    }
+    $insertAt = $cfg.Items[-1].Line + 1
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($item in $cfg.Lines) { $lines.Add($item) }
+    $lines.Insert($insertAt, $line)
+    [System.IO.File]::WriteAllText($cfg.Path, ($lines -join "`n"), (New-Object System.Text.UTF8Encoding($false)))
+    return $cfg.Path
+}
+
+function Remove-MenuItem {
+    param([string]$Root, [string]$Label)
+    $cfg = Get-MenuOrder -Root $Root
+    $item = $cfg.Items | Where-Object { $_.Key -eq $Label } | Select-Object -First 1
+    if (-not $item) { return $false }
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($line in $cfg.Lines) { $lines.Add($line) }
+    $lines.RemoveAt($item.Line)
+    [System.IO.File]::WriteAllText($cfg.Path, ($lines -join "`n"), (New-Object System.Text.UTF8Encoding($false)))
+    return $true
 }
 
 # ---------- 按新顺序写回主题导航菜单（可同时改显示标题） ----------
@@ -594,16 +723,27 @@ function Set-MenuOrder {
 function Publish-Git {
     param([string]$Message, [string]$Root)
     if (-not $Message) { $Message = '更新内容' }
+    $previousErrorActionPreference = $ErrorActionPreference
     Push-Location $Root
     try {
-        git add -A
-        if (-not $?) { throw 'git add 失败' }
-        git commit -m $Message
-        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1) { throw 'git commit 失败' }
-        git push origin main
-        if (-not $?) { throw 'git push 失败' }
+        Invoke-HexoBuild -Root $Root | Out-Null
+        Test-PublicLinks -Root $Root | Out-Null
+        # Git 将换行转换提示写入 stderr；在严格错误模式下需把它当作普通输出，
+        # 最终是否成功只根据各命令的退出码判断。
+        $ErrorActionPreference = 'Continue'
+        $addOutput = @(& git add -A 2>&1)
+        if ($LASTEXITCODE -ne 0) { throw "git add 失败:`n$($addOutput -join "`n")" }
+        & git diff --cached --quiet
+        if ($LASTEXITCODE -eq 0) { return $false }
+        $commitOutput = @(& git commit -m $Message 2>&1)
+        if ($LASTEXITCODE -ne 0) { throw "git commit 失败:`n$($commitOutput -join "`n")" }
+        $branch = (& git branch --show-current).Trim()
+        if (-not $branch) { throw '无法确定当前 Git 分支' }
+        $pushOutput = @(& git push origin $branch 2>&1)
+        if ($LASTEXITCODE -ne 0) { throw "git push 失败:`n$($pushOutput -join "`n")" }
         return $true
     } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
         Pop-Location
     }
 }

@@ -1,25 +1,25 @@
 .side-card.sticky
-    .card-wrap(itemscope itemtype='http://schema.org/Person')
+    .card-wrap(itemscope itemtype='https://schema.org/Person')
         .author-avatar
-            img.avatar-img(src=url_for(theme.avatar) onerror=`this.onerror=null;this.src='` + url_for(theme.loading_bg.flink) + `'` alt="avatar")
+            img.avatar-img(src=url_for(theme.avatar) onerror=`this.onerror=null;this.src='` + url_for(theme.loading_bg.flink) + `'` alt=config.author)
         .author-discrip
-            h3= config.author || theme.author
-            p.author-bio= theme.author_bio
+            h3(itemprop='name')= config.author || theme.author
+            p.author-bio(itemprop='description')= theme.author_bio
         .author-links
-            button.btn.m-social-links Links
+            button.btn.m-social-links(type='button' aria-label='Show contact links' aria-expanded='false' aria-controls='contact-links') Links
             if(contact_items().length)
-                ul.social-icons
+                ul#contact-links.social-icons
                     each item in contact_items()
                         li
-                            a.social-icon(href=url_for(item.url) target="_blank" title=item.name)
+                            a.social-icon(itemprop='sameAs' href=url_for(item.url) target="_blank" rel="noopener noreferrer" aria-label=item.name title=item.name)
                                 i(class=item.icon aria-hidden="true")
                 ul.social-links
                     each item in contact_items()
                         li
-                            a.e-social-link(href=url_for(item.url) target="_blank")
+                            a.e-social-link(href=url_for(item.url) target="_blank" rel="noopener noreferrer")
                                 i(class=item.icon aria-hidden="true")
-                                span= item.name
+                                span= item.label
         if(theme.cv_dl.enable)
-            a.cv-links(href=url_for(theme.cv_dl.dir) target="_blank")
+            a.cv-links(href=url_for(theme.cv_dl.dir) target="_blank" rel="noopener noreferrer" aria-label=theme.cv_dl.description)
                 i(class="fas fa-file-pdf" aria-hidden="true")
-                    span= theme.cv_dl.description
+                span= theme.cv_dl.description

@@ -2,6 +2,7 @@
 title: Home
 date: 2026-05-01 00:00:00
 academia: true
+permalink: /
 ---
 
 # Zhen Zhang

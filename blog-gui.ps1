@@ -23,6 +23,7 @@ $form.Text = '学术主页管理工具'
 $form.Size = New-Object System.Drawing.Size(850, 660)
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+$form.AutoScaleMode = [System.Windows.Forms.AutoScaleMode]::Dpi
 
 # --- 顶部：标题输入 + 操作按钮 ---
 $lblTitle = New-Object System.Windows.Forms.Label
@@ -102,6 +103,12 @@ function Get-PostUrl {
         return "http://localhost:4000/$($Matches[1])/"
     }
     $raw = Get-Content -LiteralPath $FilePath -Raw -Encoding UTF8
+    if ($raw -match '(?m)^permalink:\s*(\S+)') {
+        $permalink = $Matches[1].Trim()
+        $permalink = $permalink.Trim("'")
+        $permalink = $permalink.Trim('"')
+        if ($permalink.StartsWith('/')) { return "http://localhost:4000$permalink" }
+    }
     $date = ''
     if ($raw -match '(?m)^date:\s*(\d{4})-(\d{2})-(\d{2})') {
         $date = "$($Matches[1])/$($Matches[2])/$($Matches[3])"
@@ -113,7 +120,7 @@ function Get-PostUrl {
 function Start-HexoServer {
     $listening = Get-NetTCPConnection -LocalPort 4000 -State Listen -ErrorAction SilentlyContinue
     if (-not $listening) {
-        Start-Process powershell -WindowStyle Minimized -ArgumentList '-NoExit', '-Command', "cd $Root; npm.cmd run server"
+        Start-Process powershell -WindowStyle Minimized -WorkingDirectory $Root -ArgumentList '-NoExit', '-Command', 'npm.cmd run server'
         for ($i = 0; $i -lt 20; $i++) {
             Start-Sleep -Milliseconds 1000
             $listening = Get-NetTCPConnection -LocalPort 4000 -State Listen -ErrorAction SilentlyContinue
@@ -143,8 +150,17 @@ function Open-PostInWord {
             $w.Quit()
         } catch { }
     }
-    if (Test-Path -LiteralPath $docx) { Remove-Item -LiteralPath $docx }
+    if (Test-Path -LiteralPath $docx) {
+        if (Test-WordEditChanged -DocxPath $docx) {
+            [System.Windows.Forms.MessageBox]::Show("[$slug].docx 中有尚未导入的修改。`n请先点『从 Word 导入』保存修改，再重新打开编辑。", '请先导入 Word 修改', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null
+            return
+        }
+        Remove-Item -LiteralPath $docx -Force
+        $baseline = Get-WordEditBaselinePath -DocxPath $docx
+        if (Test-Path -LiteralPath $baseline) { Remove-Item -LiteralPath $baseline -Force }
+    }
     Convert-MdToWord -MdPath $MdPath -DocxPath $docx
+    Set-WordEditBaseline -DocxPath $docx
     Start-Process $docx
     $status.Text = "已在 Word 打开 [$slug]，改完保存后回到本窗口，选中它再点『从 Word 导入』即可更新"
 }
@@ -156,7 +172,7 @@ $btnEdit.Location = New-Object System.Drawing.Point(12, 445)
 $btnEdit.Size = New-Object System.Drawing.Size(90, 27)
 
 $btnDelete = New-Object System.Windows.Forms.Button
-$btnDelete.Text = '删除选中'
+$btnDelete.Text = '回收选中'
 $btnDelete.Location = New-Object System.Drawing.Point(110, 445)
 $btnDelete.Size = New-Object System.Drawing.Size(90, 27)
 
@@ -196,6 +212,11 @@ $btnMenu.Text = '导航栏顺序...'
 $btnMenu.Location = New-Object System.Drawing.Point(326, 480)
 $btnMenu.Size = New-Object System.Drawing.Size(110, 27)
 
+$btnPage = New-Object System.Windows.Forms.Button
+$btnPage.Text = '新建独立页面'
+$btnPage.Location = New-Object System.Drawing.Point(444, 480)
+$btnPage.Size = New-Object System.Drawing.Size(110, 27)
+
 # --- 状态栏 ---
 $status = New-Object System.Windows.Forms.Label
 $status.Location = New-Object System.Drawing.Point(12, 518)
@@ -230,7 +251,7 @@ $btnWordNew.Add_Click({
         New-WordDraft -Title $title -SavePath $sfd.FileName | Out-Null
         $status.Text = '草稿已创建，在 Word 中编辑后点"从 Word 导入"'
         Start-Process $sfd.FileName
-        [System.Windows.Forms.MessageBox]::Show("Word 草稿已创建，样式已自动配置：`n· 标题：黑体小三 居中`n· 一级小标题：黑体四号`n· 正文：宋体小四 1.5倍行距 首行缩进`n`n编辑保存后，点『从 Word 导入』选择此文件即可发布。", '已创建') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show("Word 草稿已创建，样式已自动配置：`n· 标题：仿宋/Times New Roman 22.5pt`n· 小标题：仿宋/Times New Roman 21pt`n· 正文：仿宋/Times New Roman 13.5pt，1.5 倍行距，无首行缩进`n`n编辑保存后，点『从 Word 导入』选择此文件即可发布。", '已创建') | Out-Null
     } catch {
         [System.Windows.Forms.MessageBox]::Show("创建失败: $($_.Exception.Message)", '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
     }
@@ -261,6 +282,7 @@ $btnImport.Add_Click({
         if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
         try {
             Convert-WordToPageMd -DocxPath $docxPath -PageMd $pageMd
+            Set-WordEditBaseline -DocxPath $docxPath
             $status.Text = "已更新页面: $pageBase"
             Refresh-List
             [System.Windows.Forms.MessageBox]::Show("页面 [$pageBase] 已更新，点『发布』即可上线。", '完成') | Out-Null
@@ -291,6 +313,7 @@ try {
             $force = $true
         }
         $file = New-PostFromWord -DocxPath $docxPath -Title $title -Root $Root -Force:$force -TargetFile $postMd
+        Set-WordEditBaseline -DocxPath $docxPath
         $txtTitle.Text = $title
         $status.Text = "导入成功: $title（排版已保留）"
         Refresh-List
@@ -318,11 +341,36 @@ $list.Add_DoubleClick({
 $btnDelete.Add_Click({
     if (-not $list.SelectedItems.Count) { return }
     $name = $list.SelectedItems[0].Text
-    $r = [System.Windows.Forms.MessageBox]::Show("确定删除文章 [$name] 吗？", '确认删除', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
+    $selectedPath = $list.SelectedItems[0].Tag
+    $r = [System.Windows.Forms.MessageBox]::Show("确定将 [$name] 移入回收目录吗？", '确认回收', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Warning)
     if ($r -eq [System.Windows.Forms.DialogResult]::Yes) {
-        Remove-Item -LiteralPath $list.SelectedItems[0].Tag
-        $status.Text = "已删除: $name"
-        Refresh-List
+        try {
+            $extra = @()
+            if ($selectedPath -match 'source\\([^\\]+)\\index\.md$') {
+                $pageSlug = $Matches[1]
+                $menu = Get-MenuOrder -Root $Root
+                $menuItem = $menu.Items | Where-Object { $_.Value.TrimEnd('/') -eq "/$pageSlug" } | Select-Object -First 1
+                if ($menuItem) {
+                    $removeMenu = [System.Windows.Forms.MessageBox]::Show("[$name] 仍在顶部导航中。是否同时移除导航入口？", '同步导航', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+                    if ($removeMenu -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+                    Remove-MenuItem -Root $Root -Label $menuItem.Key | Out-Null
+                }
+                $extra += Join-Path $Root ('.word_edits\' + $pageSlug + '.docx')
+                $extra += Join-Path $Root ('.word_edits\' + $pageSlug + '.docx.sha256')
+            } else {
+                $extra += Join-Path $Root ('.word_edits\' + [System.IO.Path]::GetFileNameWithoutExtension($selectedPath) + '.docx')
+                $extra += Join-Path $Root ('.word_edits\' + [System.IO.Path]::GetFileNameWithoutExtension($selectedPath) + '.docx.sha256')
+            }
+            $moved = @(Move-ToRecycleBin -FilePath $selectedPath -Root $Root)
+            foreach ($file in $extra) {
+                if (Test-Path -LiteralPath $file) { $moved += Move-ToRecycleBin -FilePath $file -Root $Root }
+            }
+            $status.Text = "已移入回收目录: $name"
+            Refresh-List
+            [System.Windows.Forms.MessageBox]::Show("已移入项目 .trash 回收目录，可从那里恢复。`n路径: $($moved -join "`n")", '已回收') | Out-Null
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show("回收失败: $($_.Exception.Message)", '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        }
     }
 })
 
@@ -333,7 +381,7 @@ $btnPreview.Add_Click({
     $tcp.Close()
     if (-not $alive) {
         $status.Text = '正在启动本地预览服务器...'
-        Start-Process powershell -ArgumentList '-NoExit', '-Command', "cd $Root; npm.cmd run server"
+        Start-Process powershell -WorkingDirectory $Root -ArgumentList '-NoExit', '-Command', 'npm.cmd run server'
         for ($i = 0; $i -lt 24; $i++) {
             Start-Sleep -Milliseconds 500
             $tcp = New-Object System.Net.Sockets.TcpClient
@@ -474,7 +522,6 @@ $btnSettings.Add_Click({
     $bio = $tb2.Text.Trim()
     if (-not $author) { $author = $profile.Author }
     try {
-        $bio = $bio -replace "'", ''
         Set-ThemeProfile -Author $author -Bio $bio -Root $Root | Out-Null
         $status.Text = '设置已保存，发布后生效'
         [System.Windows.Forms.MessageBox]::Show("设置已保存。`n本地预览若开着，请点『本地预览』按钮刷新浏览器查看最新效果；`n正式网页需点『发布』并等待约 1-2 分钟。", '完成') | Out-Null
@@ -483,16 +530,36 @@ $btnSettings.Add_Click({
     }
 })
 
+$btnPage.Add_Click({
+    $title = $txtTitle.Text.Trim()
+    if (-not $title) { [System.Windows.Forms.MessageBox]::Show('请先在上方输入页面标题', '提示') | Out-Null; return }
+    try {
+        $file = New-BlankPage -Title $title -Root $Root
+        $pageSlug = Split-Path -Leaf (Split-Path -Parent $file)
+        $add = [System.Windows.Forms.MessageBox]::Show("页面已创建。是否将 [$title] 加入顶部导航？", '更新导航', [System.Windows.Forms.MessageBoxButtons]::YesNo, [System.Windows.Forms.MessageBoxIcon]::Question)
+        if ($add -eq [System.Windows.Forms.DialogResult]::Yes) {
+            Add-MenuItem -Root $Root -Label $title -Url "/$pageSlug/" | Out-Null
+            $status.Text = "已创建页面并加入导航: $title"
+        } else {
+            $status.Text = "已创建页面: $title"
+        }
+        Refresh-List
+        Start-Process notepad $file
+    } catch {
+        [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '提示') | Out-Null
+    }
+})
+
 $btnBuild.Add_Click({
     $status.Text = '正在构建...'
-    & npm.cmd run clean 2>&1 | Out-Null
-    $out = & npm.cmd run build 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        $status.Text = '构建成功'
-        [System.Windows.Forms.MessageBox]::Show('构建成功，无错误。', '构建检查') | Out-Null
-    } else {
+    try {
+        Invoke-HexoBuild -Root $Root | Out-Null
+        Test-PublicLinks -Root $Root | Out-Null
+        $status.Text = '构建与链接检查成功'
+        [System.Windows.Forms.MessageBox]::Show('构建成功，内部链接检查通过。', '构建检查') | Out-Null
+    } catch {
         $status.Text = '构建出错，详见输出'
-        [System.Windows.Forms.MessageBox]::Show(($out | Out-String), '构建错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
+        [System.Windows.Forms.MessageBox]::Show($_.Exception.Message, '构建错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
     }
 })
 
@@ -558,9 +625,14 @@ if ($box.DialogResult -ne [System.Windows.Forms.DialogResult]::OK) { return }
 
     $status.Text = '正在发布...'
     try {
-        Publish-Git -Message $msg -Root $Root | Out-Null
-        $status.Text = '发布成功，1-2 分钟后自动部署生效'
-        [System.Windows.Forms.MessageBox]::Show('发布成功！GitHub Actions 正在自动部署，1-2 分钟生效。', '发布完成') | Out-Null
+        $published = Publish-Git -Message $msg -Root $Root
+        if ($published) {
+            $status.Text = '发布成功，1-2 分钟后自动部署生效'
+            [System.Windows.Forms.MessageBox]::Show('发布成功！构建与链接检查已通过，GitHub Actions 正在自动部署。', '发布完成') | Out-Null
+        } else {
+            $status.Text = '没有需要发布的改动'
+            [System.Windows.Forms.MessageBox]::Show('没有需要发布的改动。', '发布检查') | Out-Null
+        }
     } catch {
         $status.Text = '发布失败'
         [System.Windows.Forms.MessageBox]::Show("发布失败: $_", '错误', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
@@ -677,7 +749,7 @@ $btnMenu.Add_Click({
 })
 
 # ---------- 组装 ----------
-$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnPreviewSel, $btnBuild, $btnAvatar, $btnCv, $btnSettings, $btnMenu, $status))
+$form.Controls.AddRange(@($lblTitle, $txtTitle, $btnNew, $btnWordNew, $btnImport, $btnPublish, $lblList, $list, $btnEdit, $btnDelete, $btnPreview, $btnPreviewSel, $btnBuild, $btnAvatar, $btnCv, $btnSettings, $btnMenu, $btnPage, $status))
 Refresh-List
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form.ShowDialog() | Out-Null

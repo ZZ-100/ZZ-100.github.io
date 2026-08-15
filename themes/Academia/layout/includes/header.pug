@@ -1,9 +1,9 @@
 .header_wrap
     #blog_name
         a#site-name.blog_title(href=url_for('/')) #[=config.title]
-    button.menus_icon
+    button.menus_icon(type='button' aria-label='Open navigation' aria-expanded='false' aria-controls='primary-menu')
         .navicon
-    ul.menus_items
+    ul#primary-menu.menus_items
         each value, label in theme.menu
             if !Array.isArray(value)
                 li.menus_item

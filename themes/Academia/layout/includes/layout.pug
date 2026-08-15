@@ -1,11 +1,25 @@
 doctype html
 html(lang=config.language)
     head
+        - var currentPath = (page && page.path) || 'index.html'
+        - var pageTitle = (currentPath !== 'index.html' && page && page.title) ? page.title + ' | ' + config.title : config.title
+        - var canonicalPath = currentPath === 'index.html' ? '/' : '/' + currentPath.replace(/index\.html$/, '')
+        - var canonicalUrl = (config.url || '').replace(/\/$/, '') + canonicalPath
+        - var pageDescription = (page && page.description) || config.description || ''
         meta(charset='UTF-8')
         meta(http-equiv="X-UA-Compatible" content="IE=edge")
         meta(name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5")
-        title=config.title
+        title=pageTitle
         meta(name="author" content=config.author)
+        if pageDescription
+            meta(name="description" content=pageDescription)
+        link(rel='canonical' href=canonicalUrl)
+        meta(property='og:title' content=pageTitle)
+        meta(property='og:description' content=pageDescription)
+        meta(property='og:url' content=canonicalUrl)
+        meta(property='og:type' content=currentPath === 'index.html' ? 'website' : 'profile')
+        meta(property='og:image' content=(config.url || '').replace(/\/$/, '') + url_for(theme.avatar))
+        meta(name='twitter:card' content='summary')
         !=favicon_tag(config.favicon || theme.favicon || '/favicon.ico')
         each item in theme.CDN_USE.css
             link(rel='stylesheet', href=url_for(item))
